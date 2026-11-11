@@ -1,0 +1,47 @@
+<h1>Generations &amp; retention <span class="tag planned" style="vertical-align:4px">Planned — depends on rust-mirror retention API (G11)</span></h1>
+<div class="sub">Local generations in this workspace. Choose what to keep, preview exactly what would be removed, then confirm. Only local folders are affected.</div>
+<div class="row">
+  <div class="col" style="flex:1">
+    <div class="panel" style="padding:0; overflow:hidden">
+      <table>
+        <tr><th style="width:40px">Keep</th><th>Generation</th><th>Created</th><th>Toolchains</th><th class="right">Size</th><th>Published to *</th><th>Notes</th><th>Policy result</th></tr>
+        <tr><td><span class="cb on"></span></td><td class="mono">complete-002</td><td>2026-11-11</td><td>1.89.0, 1.90.0, stable</td><td class="right">3.38 GiB</td><td class="mono">rust-generation-002</td><td>newest</td><td class="ok">keep (newest 2)</td></tr>
+        <tr><td><span class="cb on"></span></td><td class="mono">run-002</td><td>2026-11-11</td><td>1.89.0, 1.90.0, stable</td><td class="right">3.31 GiB</td><td class="mono">—</td><td class="wrap">base for next sync</td><td class="ok">keep (required)</td></tr>
+        <tr><td><span class="cb on"></span></td><td class="mono">complete-001</td><td>2026-10-02</td><td>1.89.0, 1.90.0</td><td class="right">2.17 GiB</td><td class="mono">rust-generation-001</td><td>pinned: audit</td><td class="ok">keep (pinned)</td></tr>
+        <tr class="sel"><td><span class="cb"></span></td><td class="mono">run-001</td><td>2026-10-02</td><td>1.89.0, 1.90.0</td><td class="right">2.11 GiB</td><td class="mono">—</td><td></td><td class="err">remove</td></tr>
+        <tr class="sel"><td><span class="cb"></span></td><td class="mono">complete-000</td><td>2026-08-14</td><td>1.88.0, 1.89.0</td><td class="right">2.05 GiB</td><td class="mono">rust-generation-000</td><td></td><td class="err">remove</td></tr>
+        <tr class="sel"><td><span class="cb"></span></td><td class="mono">run-000</td><td>2026-08-14</td><td>1.88.0, 1.89.0</td><td class="right">1.99 GiB</td><td class="mono">—</td><td></td><td class="err">remove</td></tr>
+        <tr><td><span class="cb dis"></span></td><td class="mono">run-003</td><td>2026-11-11</td><td class="hint">—</td><td class="right">0.40 GiB</td><td class="mono">—</td><td>resumable sync</td><td class="hint">skipped</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Policy</h3>
+      <div class="row" style="gap:28px">
+        <div><span class="hint">Keep newest</span> <span class="input" style="display:inline-block; width:56px">2</span> <span class="hint">complete generations</span></div>
+        <div><span class="cb on"></span>Keep pinned generations</div>
+        <div><span class="cb on"></span>Keep the raw run needed for the next sync</div>
+        <div><span class="cb on"></span>Never touch in-progress runs</div>
+      </div>
+      <div class="hint" style="margin-top:8px">The policy is evaluated by rust-mirror, not by this app; the table is the library’s dry-run result. * From this app’s local publish history, not read from Nexus.</div>
+    </div>
+  </div>
+  <div class="col" style="width:320px">
+    <div class="panel">
+      <h3>Preview</h3>
+      <div style="font-size:22px; font-weight:700">3 folders · 6.15 GiB freed</div>
+      <div class="hint">Each generation is a full, independent copy, so the whole folder size is freed.</div>
+      <ul style="margin:10px 0 0; padding-left:18px" class="mono">
+        <li>run-001</li><li>complete-000</li><li>run-000</li>
+      </ul>
+    </div>
+    <div class="callout warn">
+      <b>Published copies are not deleted.</b> Removing a local generation never changes Nexus. Clean up hosted repositories in Nexus, following your retention policy.
+    </div>
+    <div class="panel">
+      <h3>Confirm</h3>
+      <div class="hint" style="margin-bottom:6px">Type <b>remove 3</b> to enable.</div>
+      <div class="input" style="color:#8c959f">remove 3</div>
+      <div style="display:flex; gap:8px; margin-top:10px"><span class="btn">Export report…</span><span style="flex:1"></span><span class="btn danger dis">Remove 3 generations</span></div>
+    </div>
+  </div>
+</div>

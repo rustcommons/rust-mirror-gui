@@ -1,0 +1,59 @@
+<h1>Plan preview</h1>
+<div class="sub">Upstream metadata only — nothing large is downloaded yet. Review exactly which files the next generation will contain.</div>
+<div class="callout gap"><b>Upstream API needed.</b> Download sizes (G3): rust-mirror 0.1.1 plans record paths and SHA-256 but not sizes. Exact replay (G12): <span class="mono">sync::run</span> resolves metadata again, so this preview must be handed to sync rather than recomputed.</div>
+<div class="kpis">
+  <div class="kpi"><div class="v">4</div><div class="l">selections frozen</div></div>
+  <div class="kpi"><div class="v">7</div><div class="l">host platforms</div></div>
+  <div class="kpi"><div class="v">96</div><div class="l">artifacts (all formats)</div></div>
+  <div class="kpi"><div class="v">≈ 3.4 GiB <span class="tag gap">G3</span></div><div class="l">estimated download · budget 10 GiB</div></div>
+  <div class="kpi"><div class="v">41</div><div class="l">reusable from run-001 (≈ 1.2 GiB)</div></div>
+</div>
+<div class="row">
+  <div class="panel" style="flex:1; padding:0; overflow:hidden">
+    <div style="display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid #d8dce1; align-items:center">
+      <div class="input" style="width:260px; color:#8c959f">Filter by package, target or path…</div>
+      <span class="btn">Group: selection ▾</span><span class="btn">Show: all ▾</span>
+      <span style="flex:1"></span><span class="hint">Files under dist/2025-09-18/ · targets abbreviated · 22 of 96</span>
+    </div>
+    <table>
+      <tr><th style="width:24px"></th><th>Package</th><th>Target</th><th>File</th><th>SHA-256</th><th class="right">Size</th><th>Source</th></tr>
+      <tr class="group"><td>▾</td><td colspan="6" class="wrap">windows-dev — requested <span class="mono">stable</span> → pinned <span class="mono">stable-2025-09-18</span> (1.90.0) · 24 artifacts</td></tr>
+      <tr><td></td><td>rustc</td><td class="mono">windows-msvc</td><td class="mono">rustc-1.90.0-x86_64-pc-windows-msvc.tar.xz</td><td class="mono">5c1e…9a07</td><td class="right">83.1 MiB</td><td class="ok">reuse</td></tr>
+      <tr><td></td><td>rustc</td><td class="mono">windows-msvc</td><td class="mono">rustc-1.90.0-x86_64-pc-windows-msvc.tar.gz</td><td class="mono">a90d…41fe</td><td class="right">121.6 MiB</td><td class="ok">reuse</td></tr>
+      <tr><td></td><td>cargo</td><td class="mono">windows-msvc</td><td class="mono">cargo-1.90.0-x86_64-pc-windows-msvc.tar.xz</td><td class="mono">0b7f…c218</td><td class="right">9.4 MiB</td><td class="ok">reuse</td></tr>
+      <tr><td></td><td>rust-std</td><td class="mono">wasm32-unknown</td><td class="mono">rust-std-1.90.0-wasm32-unknown-unknown.tar.xz</td><td class="mono">e2d4…7710</td><td class="right">19.8 MiB</td><td>download</td></tr>
+      <tr><td></td><td>rust-analyzer</td><td class="mono">windows-msvc</td><td class="mono">rust-analyzer-1.90.0-x86_64-pc-windows-msvc.tar.xz</td><td class="mono">77a1…0d3c</td><td class="right">16.2 MiB</td><td>download</td></tr>
+      <tr><td></td><td>rust-src</td><td class="mono">*</td><td class="mono">rust-src-1.90.0.tar.xz</td><td class="mono">31c9…be56</td><td class="right">3.3 MiB</td><td class="ok">reuse</td></tr>
+      <tr><td></td><td>rustup-init</td><td class="mono">windows-msvc</td><td class="mono">rustup/archive/1.28.2/…/rustup-init.exe</td><td class="mono">88e0…13ab</td><td class="right">12.9 MiB</td><td class="ok">reuse</td></tr>
+      <tr><td></td><td colspan="6" class="hint">… 17 more</td></tr>
+      <tr class="group"><td>▸</td><td colspan="6">linux-dev — <span class="mono">1.90.0</span> (2025-09-18) · 26 artifacts</td></tr>
+      <tr class="group"><td>▸</td><td colspan="6">mac-dev — <span class="mono">1.90.0</span> (2025-09-18) · 34 artifacts</td></tr>
+      <tr class="group"><td>▸</td><td colspan="6">legacy-189 — <span class="mono">1.89.0</span> (2025-08-07) · 12 artifacts</td></tr>
+    </table>
+  </div>
+  <div class="col" style="width:300px">
+    <div class="panel">
+      <h3>Frozen metadata</h3>
+      <div class="hint">windows-dev</div>
+      <table style="margin-top:4px">
+        <tr><td>Manifest</td><td class="mono">channel-rust-stable</td></tr>
+        <tr><td>SHA-256</td><td class="mono">d81f…22c0</td></tr>
+        <tr><td>Checksum sidecar</td><td class="ok">matches</td></tr>
+        <tr><td>Signature</td><td>kept, not verified</td></tr>
+      </table>
+      <div class="hint" style="margin-top:6px">The .asc signature is stored for clients; rust-mirror does not check it.</div>
+    </div>
+    <div class="panel">
+      <h3>Previous generation</h3>
+      <div class="mono">D:\mirrors\rust\run-001\mirror</div>
+      <div class="ok" style="margin-top:4px">✓ verified · 3 toolchains · 2.1 GiB</div>
+      <div class="hint" style="margin-top:4px">Verified local files are copied instead of downloaded.</div>
+    </div>
+    <div class="panel">
+      <h3>Next</h3>
+      <div class="field" style="grid-template-columns:70px 1fr"><label>Output</label><div class="input mono">run-002</div></div>
+      <div style="display:flex; gap:8px; margin-top:6px"><span class="btn">Save plan…</span><span class="btn primary" style="flex:1; text-align:center">Start sync →</span></div>
+      <div class="hint" style="margin-top:6px">Same as <span class="mono">rust-mirror sync … --previous run-001\mirror</span></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,91 @@
+/* Static mockup styling. Approximates a compact egui-style desktop UI; it is not app code. */
+* { box-sizing: border-box; }
+body { margin: 0; width: 1440px; height: 900px; overflow: hidden; font: 13px/1.4 "Nimbus Sans", "DejaVu Sans", sans-serif; color: #1f2328; background: #f6f7f9; }
+.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 12px; }
+.app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 44px 1fr 26px; height: 900px; }
+.top { grid-column: 1 / 3; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #fff; border-bottom: 1px solid #d8dce1; }
+.brand { font-weight: 700; font-size: 15px; }
+.brand span { color: #b7410e; }
+.ws { color: #57606a; }
+.ws b { color: #1f2328; font-weight: 600; }
+.top .spacer { flex: 1; }
+.nav { background: #eef0f3; border-right: 1px solid #d8dce1; padding: 12px 8px; }
+.nav h4 { margin: 14px 8px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #6e7781; }
+.nav a { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; color: #1f2328; text-decoration: none; }
+.nav a .n { width: 18px; height: 18px; border-radius: 9px; background: #d0d5db; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; color: #424a53; }
+.nav a.done .n { background: #2da44e; color: #fff; }
+.nav a.on { background: #fff; box-shadow: 0 0 0 1px #c9ced4; font-weight: 600; }
+.nav a.on .n { background: #b7410e; color: #fff; }
+.nav .muted { color: #8c959f; }
+.main { padding: 18px 22px; overflow: hidden; }
+.status { grid-column: 1 / 3; display: flex; gap: 18px; align-items: center; padding: 0 14px; font-size: 12px; color: #57606a; background: #eef0f3; border-top: 1px solid #d8dce1; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: #57606a; margin-bottom: 14px; }
+.row { display: flex; gap: 16px; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.panel { background: #fff; border: 1px solid #d8dce1; border-radius: 8px; padding: 12px 14px; }
+.panel h3 { margin: 0 0 10px; font-size: 13px; }
+.btn { display: inline-block; white-space: nowrap; padding: 6px 12px; border: 1px solid #c9ced4; border-radius: 6px; background: #fff; font-size: 13px; }
+.btn.primary { background: #b7410e; border-color: #9a370c; color: #fff; font-weight: 600; }
+.btn.danger { background: #cf222e; border-color: #a40e26; color: #fff; font-weight: 600; }
+.btn.dis { opacity: .45; }
+.field { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 8px; margin-bottom: 8px; }
+.field label { color: #424a53; }
+.input { border: 1px solid #c9ced4; border-radius: 5px; padding: 5px 8px; background: #fff; min-height: 28px; }
+.input.combo::after { content: "▾"; float: right; color: #6e7781; }
+.hint { color: #6e7781; font-size: 12px; }
+.ok { color: #1a7f37; }
+.warn { color: #9a6700; }
+.err { color: #cf222e; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #eaeef2; margin: 0 4px 4px 0; font-size: 12px; }
+.chip.x::after { content: " ×"; color: #6e7781; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.tag.tested { background: #dafbe1; color: #116329; }
+.tag.untested { background: #fff8c5; color: #7d4e00; }
+.tag.gap { background: #f3e8ff; color: #6f3cc3; border: 1px dashed #a77ee8; }
+.tag.planned { background: #f3e8ff; color: #6f3cc3; }
+.cb { display: inline-block; width: 14px; height: 14px; border: 1px solid #8c959f; border-radius: 3px; vertical-align: -2px; margin-right: 6px; background: #fff; }
+.cb.on { background: #b7410e; border-color: #9a370c; position: relative; }
+.cb.on::after { content: "✓"; color: #fff; font-size: 11px; position: absolute; left: 2px; top: -2px; }
+.cb.dis { background: #eaeef2; border-color: #c9ced4; }
+.radio { display: inline-block; width: 14px; height: 14px; border: 1px solid #8c959f; border-radius: 7px; vertical-align: -2px; margin-right: 6px; background: #fff; }
+.radio.on { border: 4px solid #b7410e; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 600; color: #57606a; font-size: 12px; padding: 5px 8px; border-bottom: 1px solid #d8dce1; background: #f6f8fa; }
+td { white-space: nowrap; padding: 5px 8px; border-bottom: 1px solid #eef0f3; vertical-align: middle; }
+tr.group td { background: #f6f8fa; font-weight: 600; }
+tr.sel td { background: #fff4ec; }
+.list a { display: block; padding: 7px 10px; border-radius: 6px; color: #1f2328; text-decoration: none; }
+.list a.on { background: #fff4ec; box-shadow: inset 3px 0 0 #b7410e; font-weight: 600; }
+.list a small { display: block; color: #6e7781; font-weight: 400; }
+.bar { height: 10px; background: #eaeef2; border-radius: 5px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: #b7410e; }
+.bar.green > i { background: #2da44e; }
+.bar.big { height: 16px; border-radius: 8px; }
+.steps { display: flex; gap: 0; margin-bottom: 14px; }
+.step { flex: 1; padding: 8px 10px; border: 1px solid #d8dce1; background: #fff; font-size: 12px; }
+.step:first-child { border-radius: 6px 0 0 6px; }
+.step:last-child { border-radius: 0 6px 6px 0; }
+.step + .step { border-left: 0; }
+.step b { display: block; font-size: 13px; }
+.step.done { background: #f0fff4; }
+.step.done b::before { content: "✓ "; color: #1a7f37; }
+.step.now { background: #fff4ec; box-shadow: inset 0 -3px 0 #b7410e; }
+.step.now b::before { content: "● "; color: #b7410e; }
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
+.kpi { background: #fff; border: 1px solid #d8dce1; border-radius: 8px; padding: 10px 12px; }
+.kpi .v { font-size: 20px; font-weight: 700; }
+.kpi .l { color: #57606a; font-size: 12px; }
+.callout { border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; font-size: 12.5px; }
+.callout.info { background: #ddf4ff; border: 1px solid #9cd0f5; }
+.callout.warn { background: #fff8c5; border: 1px solid #e3c55b; }
+.callout.gap { background: #f8f2ff; border: 1px dashed #a77ee8; }
+.log { background: #1f2328; color: #d0d7de; border-radius: 8px; padding: 8px 10px; font-family: "DejaVu Sans Mono", monospace; font-size: 11.5px; line-height: 1.55; }
+.log .t { color: #8c959f; }
+.log .g { color: #7ee787; }
+.log .y { color: #e3b341; }
+.log .b { color: #79c0ff; }
+.right { text-align: right; }
+.check li { list-style: none; margin: 0 0 7px -22px; }
+.check .i { display: inline-block; width: 18px; font-weight: 700; }
+td.wrap { white-space: normal; }
