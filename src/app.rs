@@ -15,6 +15,7 @@ enum Page {
     Selections,
     Plan,
     Sync,
+    Generations,
     Publish,
 }
 
@@ -48,6 +49,13 @@ pub struct App {
     job: Option<(Op, Job)>,
     start_error: Option<String>,
     show_stderr: bool,
+    harvested: bool,
+    gen_next: String,
+    gen_as_of: String,
+    policy: RetentionForm,
+    gen_confirm: String,
+    catalog: Option<serde_json::Value>,
+    prune_plan: Option<serde_json::Value>,
 }
 
 impl App {
@@ -76,6 +84,13 @@ impl App {
             job: None,
             start_error: None,
             show_stderr: true,
+            harvested: false,
+            gen_next: String::new(),
+            gen_as_of: today(),
+            policy: RetentionForm::default(),
+            gen_confirm: String::new(),
+            catalog: None,
+            prune_plan: None,
         };
         app.check_backend(ctx);
         app
@@ -104,7 +119,10 @@ impl App {
         self.start_error = None;
         let wake = ctx.clone();
         match Job::start(spec, move || wake.request_repaint()) {
-            Ok(job) => self.job = Some((op, job)),
+            Ok(job) => {
+                self.job = Some((op, job));
+                self.harvested = false;
+            }
             Err(e) => self.start_error = Some(format!("Could not start rust-mirror: {e}")),
         }
         self.persist(true);
@@ -134,6 +152,7 @@ impl eframe::App for App {
         if let Some((_, job)) = &mut self.job {
             job.poll();
         }
+        self.harvest();
         if self.job_running() || matches!(self.backend, Backend::Checking(_)) {
             ctx.request_repaint_after(Duration::from_millis(250));
         }
@@ -142,10 +161,7 @@ impl eframe::App for App {
         egui::Panel::top("top").show(ui, |ui| self.top_bar(ui, &ctx));
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.small(format!(
-                    "rust-mirror-gui {} (prototype)",
-                    env!("CARGO_PKG_VERSION")
-                ));
+                ui.small(format!("rust-mirror-gui {}", env!("CARGO_PKG_VERSION")));
                 ui.separator();
                 ui.small("Mirroring work runs in a separate worker process using the built-in rust-mirror library.");
             });
@@ -162,6 +178,7 @@ impl eframe::App for App {
                     Page::Selections => self.page_selections(ui),
                     Page::Plan => self.page_plan(ui, &ctx),
                     Page::Sync => self.page_sync(ui, &ctx),
+                    Page::Generations => self.page_generations(ui, &ctx),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
         });
@@ -212,6 +229,9 @@ impl App {
                     self.page = match op {
                         Op::Publish => Page::Publish,
                         Op::Plan => Page::Plan,
+                        Op::Discover | Op::RetentionPreview | Op::RetentionApply => {
+                            Page::Generations
+                        }
                         _ => Page::Sync,
                     };
                 }
@@ -235,6 +255,9 @@ impl App {
         item(ui, Page::Selections, "1  Selections", None);
         item(ui, Page::Plan, "2  Plan preview", None);
         item(ui, Page::Sync, "3  Sync & finish", None);
+        ui.add_space(8.0);
+        ui.small("MANAGE");
+        item(ui, Page::Generations, "Generations & retention", None);
         ui.add_space(8.0);
         ui.small("DELIVER (offline network)");
         item(ui, Page::Publish, "4  Publish", None);
@@ -593,6 +616,20 @@ impl App {
             && self.confirm_fresh
             && self.confirm_partial
             && creds_ok;
+        let check_ready =
+            !s.publish_source.trim().is_empty() && !s.publish_url.trim().is_empty() && creds_ok;
+        let check = ops::publish_preflight(
+            &ops::worker_program(),
+            &s.publish_source,
+            &s.publish_url,
+            &s.publish_ca,
+            &s.publish_user,
+            &self.password,
+        );
+        if self.start_row(ui, check_ready, "Check destination (no writes)", &check) {
+            self.start(ctx, Op::Publish, check);
+        }
+        let s = &self.settings;
         let spec = ops::publish(
             &ops::worker_program(),
             &s.publish_source,
@@ -610,6 +647,165 @@ impl App {
         self.job_view(ui, &[Op::Publish]);
     }
 
+    /// Keep results that later pages need once a job finishes successfully.
+    fn harvest(&mut self) {
+        if self.harvested {
+            return;
+        }
+        let Some((op, job)) = &self.job else { return };
+        if !job.finished() {
+            return;
+        }
+        self.harvested = true;
+        let report = job
+            .progress
+            .result
+            .as_ref()
+            .filter(|r| r.ok)
+            .and_then(|r| r.report.clone());
+        match op {
+            Op::Discover => {
+                // rust-mirror's `generations` report is the catalog itself.
+                self.catalog = report.map(|r| r.get("catalog").cloned().unwrap_or(r));
+                self.prune_plan = None;
+            }
+            Op::RetentionPreview => {
+                self.prune_plan = report.and_then(|r| r.get("plan").cloned());
+                self.gen_confirm.clear();
+            }
+            Op::RetentionApply => {
+                self.prune_plan = None;
+                self.catalog = None;
+                self.gen_confirm.clear();
+            }
+            _ => {}
+        }
+    }
+
+    fn page_generations(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.heading("Generations & retention");
+        ui.label("List the generations in one workspace folder, preview what a retention policy would remove, and only then delete. Only local folders are affected; nothing on Nexus is ever deleted.");
+        ui.add_space(8.0);
+        text_field(
+            ui,
+            "Workspace folder",
+            &mut self.settings.generations_dir,
+            "the folder that holds your run-NNN / complete-NNN folders",
+        );
+        let program = ops::worker_program();
+        let ready = !self.settings.generations_dir.trim().is_empty();
+        let spec = ops::generations(&program, &self.settings.generations_dir);
+        if self.start_row(ui, ready, "Discover", &spec) {
+            self.start(ctx, Op::Discover, spec);
+        }
+        let mut choices = Vec::new();
+        if let Some(catalog) = &self.catalog {
+            ui.add_space(6.0);
+            choices = show_catalog(ui, catalog);
+        }
+        ui.add_space(8.0);
+        ui.label(RichText::new("Retention policy").strong());
+        ui.horizontal(|ui| {
+            let l = ui.add_sized([150.0, 20.0], egui::Label::new("Next sync's previous"));
+            egui::ComboBox::from_id_salt("next-previous")
+                .width(ui.available_width() - 10.0)
+                .selected_text(if self.gen_next.is_empty() {
+                    "choose the generation your next sync will reuse"
+                } else {
+                    self.gen_next.as_str()
+                })
+                .show_ui(ui, |ui| {
+                    for c in &choices {
+                        ui.selectable_value(&mut self.gen_next, c.clone(), c.as_str());
+                    }
+                })
+                .response
+                .labelled_by(l.id);
+        });
+        let f = &mut self.policy;
+        egui::Grid::new("policy")
+            .num_columns(4)
+            .spacing([16.0, 6.0])
+            .show(ui, |ui| {
+                let l = ui.label("Newest stable releases to keep");
+                ui.add(egui::DragValue::new(&mut f.latest_stable).range(0..=256))
+                    .labelled_by(l.id);
+                let l = ui.label("Previous generations to keep");
+                ui.add(egui::DragValue::new(&mut f.previous_generations).range(0..=31))
+                    .labelled_by(l.id);
+                ui.end_row();
+                let l = ui.label("Nightly days to keep");
+                ui.add(egui::DragValue::new(&mut f.nightly_days).range(0..=36_600))
+                    .labelled_by(l.id);
+                let l = ui.label("Always keep newest folders");
+                ui.add(egui::DragValue::new(&mut f.keep_newest).range(0..=32))
+                    .labelled_by(l.id);
+                ui.end_row();
+            });
+        text_field(
+            ui,
+            "Pinned releases",
+            &mut f.pinned,
+            "always keep, e.g. 1.89.0, stable-2025-09-18",
+        );
+        text_field(
+            ui,
+            "As of (date)",
+            &mut self.gen_as_of,
+            "YYYY-MM-DD; nightly ages count from this date",
+        );
+        let policy_json = self.policy.to_json();
+        let ready = ready && !self.gen_next.is_empty() && !self.gen_as_of.trim().is_empty();
+        let spec = ops::retention_preview(
+            &program,
+            &self.settings.generations_dir,
+            &self.gen_next,
+            &self.gen_as_of,
+            &policy_json,
+        );
+        if self.start_row(ui, ready, "Preview removal", &spec) {
+            self.start(ctx, Op::RetentionPreview, spec);
+        }
+        if let Some(plan) = self.prune_plan.clone() {
+            ui.add_space(8.0);
+            let n = show_prune_plan(ui, &plan);
+            if n > 0 {
+                let phrase = format!("delete {n}");
+                ui.horizontal(|ui| {
+                    let l = ui.label(format!("Type “{phrase}” to enable deletion:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.gen_confirm).desired_width(160.0))
+                        .labelled_by(l.id);
+                    let enabled = self.gen_confirm.trim() == phrase
+                        && self.backend_ok()
+                        && !self.job_running();
+                    if ui
+                        .add_enabled(
+                            enabled,
+                            egui::Button::new(
+                                RichText::new(format!("Delete {n} generation(s)")).color(RED),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        match write_plan_file(&plan) {
+                            Ok(path) => {
+                                let spec = ops::retention_apply(&program, &path);
+                                self.start(ctx, Op::RetentionApply, spec);
+                            }
+                            Err(e) => self.start_error = Some(e),
+                        }
+                    }
+                });
+                ui.label(RichText::new("rust-mirror re-checks every file against this preview before deleting and refuses if anything changed. There is no undo.").weak());
+            }
+        }
+        ui.add_space(8.0);
+        self.job_view(
+            ui,
+            &[Op::Discover, Op::RetentionPreview, Op::RetentionApply],
+        );
+    }
+
     fn page_plan(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.heading("Plan preview");
         ui.label("Read upstream metadata for every selection and list exactly which files a sync would download. Nothing large is downloaded and nothing is written.");
@@ -625,7 +821,7 @@ impl App {
         if self.start_row(ui, ready, "Preview plan", &spec) {
             self.start(ctx, Op::Plan, spec);
         }
-        banner(ui, BLUE, "Download sizes are not known before downloading (rust-mirror 0.1.1). A sync resolves metadata again, so a moving channel such as `stable` can change between this preview and the sync; the sync report shows what was actually frozen.");
+        banner(ui, BLUE, "Upstream manifests don't record download sizes, so sizes appear only during the sync. A sync resolves metadata again, so a moving channel such as `stable` can change between this preview and the sync; the sync report shows what was actually frozen.");
         let plans = self
             .job
             .as_ref()
@@ -768,25 +964,35 @@ impl App {
                     ));
                     ui.end_row();
                     ui.label("Activity");
-                    match p.idle {
-                        Some(idle) if idle >= Duration::from_secs(30) => ui.label(
+                    let idle = job.last_progress.elapsed();
+                    let doing = p
+                        .heartbeat
+                        .as_ref()
+                        .map(|(_, op, path)| match path {
+                            Some(path) => format!("{op}: {}", short_path(path)),
+                            None => op.clone(),
+                        })
+                        .unwrap_or_default();
+                    if idle >= Duration::from_secs(30) {
+                        ui.label(
                             RichText::new(format!(
-                                "the worker is alive, but nothing visible has progressed for {} (large files are hashed silently)",
+                                "alive, but no new progress for {} ({doing}). A slow network read can look like this.",
                                 human_duration(idle)
                             ))
                             .color(AMBER),
-                        ),
-                        Some(_) => ui.label("progressing"),
-                        None => ui.label("not reported"),
-                    };
+                        );
+                    } else {
+                        ui.label(format!("progressing — {doing}"));
+                    }
                 }
                 ui.end_row();
                 if !p.files.is_empty() {
                     ui.label("Transferred");
                     let done = p.files.values().filter(|f| f.done).count();
                     ui.label(format!(
-                        "{} · {} of {} files done",
+                        "{} over the network · {} processed locally · {} of {} files done",
                         human_bytes(p.bytes_total),
+                        human_bytes(p.local_bytes),
                         done,
                         p.files.len()
                     ));
@@ -801,7 +1007,9 @@ impl App {
                     .and_then(|r| r.report.as_ref())
                     .and_then(|r| r.as_object())
                 {
-                    for (key, value) in report {
+                    // Sync nests its counters under `report`; show both levels.
+                    let nested = report.get("report").and_then(|r| r.as_object());
+                    for (key, value) in report.iter().chain(nested.into_iter().flatten()) {
                         let shown = match value {
                             serde_json::Value::String(s) => s.clone(),
                             serde_json::Value::Number(n) => match n.as_u64() {
@@ -898,13 +1106,23 @@ impl App {
                     for (path, f) in active {
                         ui.label(&f.action);
                         ui.label(RichText::new(short_path(path)).monospace());
-                        match f.total {
-                            Some(t) if t > 0 => ui.add(
+                        match (f.hashing, f.total) {
+                            (Some((c, Some(t))), _) if t > 0 => ui.add(
+                                egui::ProgressBar::new(c.min(t) as f32 / t as f32)
+                                    .desired_width(220.0)
+                                    .text(format!(
+                                        "hashing {} / {}",
+                                        human_bytes(c),
+                                        human_bytes(t)
+                                    )),
+                            ),
+                            (Some((c, _)), _) => ui.label(format!("hashing {}", human_bytes(c))),
+                            (None, Some(t)) if t > 0 => ui.add(
                                 egui::ProgressBar::new(f.bytes.min(t) as f32 / t as f32)
                                     .desired_width(220.0)
                                     .text(format!("{} / {}", human_bytes(f.bytes), human_bytes(t))),
                             ),
-                            _ => ui.label(human_bytes(f.bytes)),
+                            (None, _) => ui.label(human_bytes(f.bytes)),
                         };
                         ui.end_row();
                     }
@@ -996,6 +1214,212 @@ fn health_text(op: Op, job: &Job) -> (String, Color32) {
         Health::ExitedWithoutResult(how) => (format!("rust-mirror ended without reporting a result ({how})."), RED),
         Health::Killed => ("Process ended by you.".into(), AMBER),
     }
+}
+
+#[derive(Clone, Debug)]
+struct RetentionForm {
+    latest_stable: usize,
+    nightly_days: u32,
+    previous_generations: usize,
+    keep_newest: usize,
+    pinned: String,
+}
+
+impl Default for RetentionForm {
+    fn default() -> Self {
+        Self {
+            latest_stable: 2,
+            nightly_days: 0,
+            previous_generations: 1,
+            keep_newest: 2,
+            pinned: String::new(),
+        }
+    }
+}
+
+impl RetentionForm {
+    /// rust-mirror `retention::Policy` as JSON; the library validates it.
+    fn to_json(&self) -> String {
+        serde_json::json!({
+            "pinned_releases": crate::config::split_list(&self.pinned),
+            "latest_stable": self.latest_stable,
+            "nightly_days": self.nightly_days,
+            "previous_generations": self.previous_generations,
+            "keep_newest": self.keep_newest,
+            "pinned_generations": [],
+        })
+        .to_string()
+    }
+}
+
+/// Today's UTC date as YYYY-MM-DD (civil-from-days).
+fn today() -> String {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0) as i64;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// The reviewed plan goes to the worker through a private temporary file.
+fn write_plan_file(plan: &serde_json::Value) -> Result<std::path::PathBuf, String> {
+    let path = std::env::temp_dir().join(format!(
+        "rust-mirror-gui-plan-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    std::fs::write(&path, plan.to_string())
+        .map_err(|e| format!("Could not write the plan file: {e}"))?;
+    Ok(path)
+}
+
+/// Shows discovered generations and runs; returns completed generation paths.
+fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
+    let s = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
+    let empty = Vec::new();
+    let gens = catalog
+        .get("generations")
+        .and_then(|g| g.as_array())
+        .unwrap_or(&empty);
+    let runs = catalog
+        .get("runs")
+        .and_then(|g| g.as_array())
+        .unwrap_or(&empty);
+    let issues = catalog
+        .get("issues")
+        .and_then(|g| g.as_array())
+        .unwrap_or(&empty);
+    let mut choices = Vec::new();
+    ui.label(
+        RichText::new(format!(
+            "{} generation(s), {} run folder(s)",
+            gens.len(),
+            runs.len()
+        ))
+        .strong(),
+    );
+    egui::Grid::new("gens")
+        .striped(true)
+        .num_columns(4)
+        .spacing([14.0, 3.0])
+        .show(ui, |ui| {
+            for h in ["Generation", "Toolchains", "Size", "Schema"] {
+                ui.label(RichText::new(h).strong());
+            }
+            ui.end_row();
+            for g in gens {
+                let path = s(g, "path");
+                choices.push(path.clone());
+                ui.label(RichText::new(&path).monospace());
+                let tc: Vec<String> = g
+                    .get("toolchains")
+                    .and_then(|t| t.as_array())
+                    .map(|t| t.iter().map(|r| s(r, "pinned_toolchain")).collect())
+                    .unwrap_or_default();
+                ui.label(tc.join(", "));
+                ui.label(human_bytes(
+                    g.get("recorded_bytes")
+                        .and_then(|b| b.as_u64())
+                        .unwrap_or(0),
+                ));
+                ui.label(g.get("schema").map(|v| v.to_string()).unwrap_or_default());
+                ui.end_row();
+            }
+            for r in runs {
+                ui.label(RichText::new(s(r, "path")).monospace());
+                ui.label(format!(
+                    "{} run: {}",
+                    s(r, "kind"),
+                    r.get("state").and_then(|x| x.as_str()).unwrap_or("?")
+                ));
+                ui.label("");
+                ui.label("");
+                ui.end_row();
+            }
+        });
+    for i in issues {
+        ui.label(RichText::new(format!("⚠ {}: {}", s(i, "path"), s(i, "message"))).color(AMBER));
+    }
+    choices
+}
+
+/// Shows a retention preview; returns how many generations would be removed.
+fn show_prune_plan(ui: &mut egui::Ui, plan: &serde_json::Value) -> usize {
+    let s = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
+    let empty = Vec::new();
+    let folders = plan
+        .get("folders")
+        .and_then(|f| f.as_array())
+        .unwrap_or(&empty);
+    let kept = plan
+        .get("kept")
+        .and_then(|f| f.as_array())
+        .unwrap_or(&empty);
+    let total = plan
+        .get("total_bytes")
+        .and_then(|b| b.as_u64())
+        .unwrap_or(0);
+    if folders.is_empty() {
+        banner(ui, GREEN, "Nothing would be removed under this policy.");
+    } else {
+        banner(
+            ui,
+            AMBER,
+            &format!(
+                "{} generation folder(s) would be removed, {} in total.",
+                folders.len(),
+                human_bytes(total)
+            ),
+        );
+    }
+    egui::Grid::new("prune")
+        .striped(true)
+        .num_columns(2)
+        .spacing([14.0, 3.0])
+        .show(ui, |ui| {
+            for f in folders {
+                ui.label(RichText::new("remove").color(RED));
+                ui.label(
+                    RichText::new(format!(
+                        "{}  ({})",
+                        s(f, "path"),
+                        human_bytes(f.get("bytes").and_then(|b| b.as_u64()).unwrap_or(0))
+                    ))
+                    .monospace(),
+                );
+                ui.end_row();
+            }
+            for k in kept {
+                let reasons: Vec<String> = k
+                    .get("reasons")
+                    .and_then(|r| r.as_array())
+                    .map(|r| {
+                        r.iter()
+                            .filter_map(|x| x.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                ui.label(RichText::new("keep").color(GREEN));
+                ui.label(format!("{} — {}", s(k, "path"), reasons.join("; ")));
+                ui.end_row();
+            }
+        });
+    folders.len()
 }
 
 fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {

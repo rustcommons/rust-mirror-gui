@@ -8,6 +8,9 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Plan,
+    Discover,
+    RetentionPreview,
+    RetentionApply,
     Sync,
     Rustup,
     Publish,
@@ -38,12 +41,67 @@ fn finish(program: &str, label: &str, mut args: Vec<OsString>, env: Vec<(String,
         args,
         env,
         label: label.into(),
+        cli: None,
     }
 }
 
+pub fn generations(program: &str, directory: &str) -> Spec {
+    let a: Vec<OsString> = vec![
+        "generations".into(),
+        "--directory".into(),
+        directory.trim().into(),
+    ];
+    finish(program, "Discover generations", a, vec![])
+}
+
+pub fn retention_preview(
+    program: &str,
+    directory: &str,
+    next_previous: &str,
+    as_of: &str,
+    policy_json: &str,
+) -> Spec {
+    let a: Vec<OsString> = vec![
+        "retention-preview".into(),
+        "--directory".into(),
+        directory.trim().into(),
+        "--next-previous".into(),
+        next_previous.trim().into(),
+        "--as-of".into(),
+        as_of.trim().into(),
+        "--policy".into(),
+        policy_json.into(),
+    ];
+    let mut spec = finish(program, "Retention preview", a, vec![]);
+    spec.cli = Some(format!(
+        "rust-mirror prune --config FILE-WITH-[retention] --as-of {} --directory {} --next-previous {} --dry-run",
+        as_of.trim(),
+        directory.trim(),
+        next_previous.trim()
+    ));
+    spec
+}
+
+pub fn retention_apply(program: &str, plan_file: &std::path::Path) -> Spec {
+    let a: Vec<OsString> = vec![
+        "retention-apply".into(),
+        "--plan-file".into(),
+        plan_file.into(),
+        "--allow-delete".into(),
+    ];
+    let mut spec = finish(program, "Remove generations", a, vec![]);
+    spec.cli = Some("rust-mirror prune … --apply (applies the reviewed preview)".into());
+    spec
+}
+
 pub fn plan(program: &str, config: &str) -> Spec {
-    let a: Vec<OsString> = vec!["plan".into(), "--config".into(), config.trim().into()];
-    finish(program, "Plan preview", a, vec![])
+    let a: Vec<OsString> = vec!["plan-all".into(), "--config".into(), config.trim().into()];
+    let mut spec = finish(program, "Plan preview", a, vec![]);
+    spec.cli = Some(format!(
+        "rust-mirror plan --config {} --selection NAME --output NEW_PLAN_DIRECTORY (once per selection)",
+        config.trim()
+    ));
+    spec
 }
 
 pub fn sync(program: &str, config: &str, output: &str, previous: &str, mode: SyncMode) -> Spec {
@@ -83,6 +141,22 @@ pub fn rustup(program: &str, snapshot: &str, version: &str, output: &str, promot
 
 /// Credentials go to the child's environment only (the variables the
 /// rust-mirror CLI documents), never into arguments, logs or settings.
+/// Same as [`publish`] but only checks local content, TLS, credentials and
+/// remote absence (`publish --preflight`); nothing is written.
+pub fn publish_preflight(
+    program: &str,
+    source: &str,
+    url: &str,
+    ca: &str,
+    user: &str,
+    password: &str,
+) -> Spec {
+    let mut spec = publish(program, source, url, ca, user, password);
+    spec.args.insert(2, "--preflight".into());
+    spec.label = "Publish check".into();
+    spec
+}
+
 pub fn publish(
     program: &str,
     source: &str,
@@ -124,6 +198,10 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::Publish, _) => "Nothing is activated by publishing. If any file was uploaded, use a new repository for the next attempt.",
         (Op::Rustup, "cancelled") | (Op::Rustup, "killed") | (Op::Rustup, "no_result") => {
             "The Rustup step does not resume. Delete the incomplete output folder, then run it again."
+        }
+        (Op::Discover, _) | (Op::RetentionPreview, _) => "Nothing was deleted. Check the message, then try again.",
+        (Op::RetentionApply, _) => {
+            "Deletion stopped. Files removed before the stop stay removed and there is no rollback. Discover again and inspect the folder before retrying."
         }
         (Op::Plan, _) => "A preview only reads metadata and writes nothing. Check the message, then preview again.",
         (_, "cancelled") | (_, "killed") | (_, "no_result") => {

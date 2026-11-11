@@ -22,12 +22,18 @@ pub struct Spec {
     pub args: Vec<OsString>,
     pub env: Vec<(String, String)>,
     pub label: String,
+    /// Shown instead of the derived command when the worker command has no
+    /// one-to-one rust-mirror CLI equivalent.
+    pub cli: Option<String>,
 }
 
 impl Spec {
     /// Equivalent rust-mirror CLI command, for display. A leading `--worker`
     /// is shown as `rust-mirror`. Environment values are never included.
     pub fn display(&self) -> String {
+        if let Some(cli) = &self.cli {
+            return cli.clone();
+        }
         let mut args = self.args.iter().peekable();
         let mut out = if args
             .peek()
@@ -83,6 +89,8 @@ pub struct FileProgress {
     pub action: String,
     pub bytes: u64,
     pub total: Option<u64>,
+    /// Current hash pass: (hashed, total).
+    pub hashing: Option<(u64, Option<u64>)>,
     pub done: bool,
 }
 
@@ -113,12 +121,21 @@ pub struct Progress {
     pub hello: Option<protocol::Hello>,
     pub stage: Option<protocol::Stage>,
     pub files: BTreeMap<String, FileProgress>,
+    /// Bytes moved by network operations (download/resume/restart/upload).
     pub bytes_total: u64,
+    /// Bytes processed locally (reuse/copy/verify and other operations).
+    pub local_bytes: u64,
+    /// Path of the most recent `artifact` event.
+    pub current: Option<String>,
+    /// Latest heartbeat: (stage, operation, path).
+    pub heartbeat: Option<(String, String, Option<String>)>,
     pub result: Option<Outcome>,
     pub protocol_warnings: usize,
     pub events: u64,
-    /// Time without visible progress, as last reported by a heartbeat.
-    pub idle: Option<Duration>,
+}
+
+fn is_network(action: &str) -> bool {
+    matches!(action, "download" | "resume" | "restart" | "upload")
 }
 
 impl Progress {
@@ -150,10 +167,20 @@ impl Progress {
                 Some((LogKind::Stage, format!("{}{n}{d}", s.name)))
             }
             Event::Artifact(a) => {
+                // A new operation implicitly ends the previous one.
+                if let Some(prev) = self.current.take().filter(|p| *p != a.path) {
+                    if let Some(f) = self.files.get_mut(&prev) {
+                        f.done = true;
+                    }
+                }
+                self.current = Some(a.path.clone());
                 let f = self.files.entry(a.path.clone()).or_default();
                 f.action = a.action.clone();
-                f.total = a.expected_bytes.or(f.total);
-                f.done = matches!(a.action.as_str(), "reuse" | "verified" | "complete");
+                f.total = a.expected_bytes;
+                // Counters reset per operation and include the resume offset.
+                f.bytes = a.offset.unwrap_or(0);
+                f.hashing = None;
+                f.done = matches!(a.action.as_str(), "verified" | "complete");
                 let at = a
                     .offset
                     .filter(|o| *o > 0)
@@ -163,15 +190,32 @@ impl Progress {
             }
             Event::Bytes(b) => {
                 let f = self.files.entry(b.path.clone()).or_default();
-                if b.bytes > f.bytes {
-                    self.bytes_total += b.bytes - f.bytes;
+                if b.count > f.bytes {
+                    let delta = b.count - f.bytes;
+                    if is_network(&f.action) {
+                        self.bytes_total += delta;
+                    } else {
+                        self.local_bytes += delta;
+                    }
                 }
-                f.bytes = b.bytes;
+                f.bytes = b.count;
                 f.total = b.total.or(f.total);
                 None
             }
+            Event::Hashing(h) => {
+                // Hash passes over private working files have no artifact
+                // event; they show in the heartbeat's operation instead.
+                if let Some(f) = self.files.get_mut(&h.path) {
+                    f.hashing = Some((h.count, h.total));
+                }
+                None
+            }
             Event::Heartbeat(h) => {
-                self.idle = h.idle_ms.map(Duration::from_millis);
+                self.heartbeat = Some((
+                    h.stage.clone().unwrap_or_default(),
+                    h.operation.clone().unwrap_or_default(),
+                    h.path.clone(),
+                ));
                 None
             }
             Event::Log(l) => {
@@ -184,6 +228,9 @@ impl Progress {
             }
             Event::Result(o) => {
                 self.result = Some(o.clone());
+                if o.ok {
+                    self.files.values_mut().for_each(|f| f.done = true);
+                }
                 Some(match &o.error {
                     None if o.ok => (LogKind::Info, "finished successfully".into()),
                     Some(e) if e.kind == "cancelled" => {
@@ -228,6 +275,8 @@ pub struct Job {
     pub command_line: String,
     pub started: Instant,
     pub last_event: Instant,
+    /// Last non-heartbeat event: heartbeats alone mean "alive, no new progress".
+    pub last_progress: Instant,
     pub progress: Progress,
     pub log: Vec<LogLine>,
     pub stop_requested: Option<Instant>,
@@ -265,6 +314,7 @@ impl Job {
             command_line: spec.display(),
             started: now,
             last_event: now,
+            last_progress: now,
             progress: Progress::default(),
             log: Vec::new(),
             stop_requested: None,
@@ -284,20 +334,14 @@ impl Job {
             match msg {
                 Msg::Event(e) => {
                     self.last_event = Instant::now();
+                    if !matches!(e, Event::Heartbeat(_)) {
+                        self.last_progress = Instant::now();
+                    }
                     if let Some((kind, text)) = self.progress.apply(&e) {
                         self.push(kind, text);
                     }
                 }
-                Msg::Stderr(line) => {
-                    // Bridge for rust-mirror 0.1.1, which reports sync stages only
-                    // as text: show them as stage detail. Display only.
-                    if let (Some(detail), Some(stage)) =
-                        (line.strip_prefix("sync: "), self.progress.stage.as_mut())
-                    {
-                        stage.detail = Some(detail.to_string());
-                    }
-                    self.push(LogKind::Stderr, line)
-                }
+                Msg::Stderr(line) => self.push(LogKind::Stderr, line),
                 Msg::StdoutClosed(err) => {
                     self.stdout_closed = true;
                     if let Some(err) = err {
@@ -568,24 +612,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bytes_events_accumulate_without_double_counting() {
+    fn bytes_events_follow_protocol_1_counters() {
         let mut p = Progress::default();
         for line in [
-            r#"{"type":"artifact","path":"a","action":"download","expected_bytes":100}"#,
-            r#"{"type":"bytes","path":"a","bytes":40}"#,
-            r#"{"type":"bytes","path":"a","bytes":100}"#,
-            r#"{"type":"bytes","path":"b","bytes":10}"#,
+            r#"{"type":"artifact","seq":1,"elapsed_ms":0,"path":"a","action":"download","offset":0,"expected_bytes":100}"#,
+            r#"{"type":"bytes","path":"a","count":40}"#,
+            r#"{"type":"bytes","path":"a","count":100}"#,
+            r#"{"type":"hashing","path":"a","count":100,"total":100}"#,
+            r#"{"type":"artifact","path":"b","action":"resume","offset":30,"expected_bytes":50}"#,
+            r#"{"type":"bytes","path":"b","count":50}"#,
+            r#"{"type":"artifact","path":"c","action":"reuse","offset":0,"expected_bytes":7}"#,
+            r#"{"type":"bytes","path":"c","count":7}"#,
         ] {
             p.apply(&Event::parse(line));
         }
-        assert_eq!(p.bytes_total, 110);
-        assert_eq!(p.files["a"].total, Some(100));
+        // The resume offset is not counted as newly transferred; reuse is local.
+        assert_eq!(p.bytes_total, 120);
+        assert_eq!(p.local_bytes, 7);
+        assert!(p.files["a"].done && p.files["b"].done && !p.files["c"].done);
+        assert_eq!(p.files["a"].hashing, Some((100, Some(100))));
+        p.apply(&Event::parse(
+            r#"{"type":"hashing","path":"x.part","count":1,"total":2}"#,
+        ));
+        assert!(!p.files.contains_key("x.part"));
     }
 
     #[test]
     fn stall_threshold_follows_heartbeat() {
         let mut p = Progress::default();
-        assert_eq!(p.stall_after(), Duration::from_secs(6));
+        assert_eq!(p.stall_after(), Duration::from_secs(5));
         p.apply(&Event::parse(
             r#"{"type":"hello","protocol":1,"heartbeat_ms":500}"#,
         ));
@@ -603,6 +658,7 @@ mod tests {
             args: vec!["publish".into(), "--source".into(), "C:\\my dir".into()],
             env: vec![("NEXUS_PASSWORD".into(), "secret".into())],
             label: "x".into(),
+            cli: None,
         };
         let shown = spec.display();
         assert!(!shown.contains("secret"));

@@ -198,7 +198,7 @@ fn built_in_worker_reports_library_errors_as_results() {
     assert_eq!(job.progress.hello.as_ref().unwrap().command, "sync");
     match job.health() {
         Health::Failed { kind, message } => {
-            assert_eq!(kind, "unclassified");
+            assert_eq!(kind, "invalid");
             assert!(message.contains("regular file"), "{message}");
         }
         other => panic!("{other:?}"),

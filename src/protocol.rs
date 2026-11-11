@@ -1,10 +1,9 @@
 //! Client side of the rust-mirror JSON-lines event protocol.
 //!
-//! PROVISIONAL: rust-mirror 0.2.0 defines the protocol in its `docs/EVENTS.md`.
-//! Until that spec is on rust-mirror's main branch, the shapes here follow the
-//! GUI's request to the rust-mirror maintainers and are exercised only against
-//! the fake backend. Parsing is deliberately tolerant: unknown event types and
-//! unknown fields are kept and shown, never fatal.
+//! Implements protocol 1 as specified in rust-mirror's `docs/EVENTS.md`
+//! (rust-mirror 0.2.0). Parsing is deliberately tolerant, as the spec requires:
+//! unknown fields and unknown nonterminal event types are ignored (and shown
+//! in the activity log), never fatal.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -17,15 +16,16 @@ pub const WORKER_ARG: &str = "--worker";
 pub const VERSION_ARGS: &[&str] = &[WORKER_ARG, "--version"];
 /// Line written to the backend's stdin to ask for a graceful stop.
 pub const CANCEL_LINE: &str = "{\"type\":\"cancel\"}\n";
-/// Heartbeat interval assumed when `hello` does not state one.
-pub const DEFAULT_HEARTBEAT_MS: u64 = 2000;
+/// Heartbeat interval assumed when `hello` does not state one (spec: about 1 s).
+pub const DEFAULT_HEARTBEAT_MS: u64 = 1000;
 /// Longest stdout line accepted from the backend.
 pub const MAX_LINE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Hello {
     pub protocol: u64,
-    #[serde(default)]
+    /// Backend (rust-mirror) package version.
+    #[serde(default, alias = "tool_version")]
     pub tool: String,
     #[serde(default)]
     pub command: String,
@@ -57,8 +57,17 @@ pub struct Artifact {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Bytes {
     pub path: String,
-    /// Cumulative bytes for this path in this run.
-    pub bytes: u64,
+    /// Cumulative bytes of the current operation on this path, including any
+    /// resume offset; resets with a new `artifact` event.
+    pub count: u64,
+    #[serde(default)]
+    pub total: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Hashing {
+    pub path: String,
+    pub count: u64,
     #[serde(default)]
     pub total: Option<u64>,
 }
@@ -67,9 +76,15 @@ pub struct Bytes {
 pub struct Heartbeat {
     #[serde(default)]
     pub stage: Option<String>,
-    /// Milliseconds since the operation last made visible progress (provisional).
     #[serde(default)]
-    pub idle_ms: Option<u64>,
+    pub operation: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Sequence of the last non-heartbeat event; unchanged means no new progress.
+    #[serde(default)]
+    pub progress_seq: Option<u64>,
+    #[serde(default)]
+    pub cancel_requested: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -101,6 +116,7 @@ pub enum Event {
     Stage(Stage),
     Artifact(Artifact),
     Bytes(Bytes),
+    Hashing(Hashing),
     Heartbeat(Heartbeat),
     Log(Log),
     Result(Outcome),
@@ -138,6 +154,7 @@ impl Event {
             "stage" => typed(value).map(Event::Stage),
             "artifact" => typed(value).map(Event::Artifact),
             "bytes" => typed(value).map(Event::Bytes),
+            "hashing" => typed(value).map(Event::Hashing),
             "heartbeat" => typed(value).map(Event::Heartbeat),
             "log" => typed(value).map(Event::Log),
             "result" => typed(value).map(Event::Result),
@@ -165,34 +182,49 @@ pub struct BackendVersion {
 /// is this same executable, a failure here means a broken build or a blocked
 /// child process, not a version mismatch. The text is shown to the user.
 pub fn check_version(stdout: &str) -> Result<BackendVersion, String> {
-    let first = stdout.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    let value: Value = serde_json::from_str(first).map_err(|_| {
-        let shown: String = first.chars().take(80).collect();
-        format!("The operation worker gave an unreadable answer (\"{shown}\").")
-    })?;
-    let tool = value
-        .get("tool")
-        .and_then(Value::as_str)
-        .ok_or("The worker's answer has no tool version.")?
-        .to_owned();
-    let protocol = value
-        .get("protocol")
-        .and_then(Value::as_u64)
-        .ok_or("The worker's answer has no protocol version.")?;
-    if protocol != PROTOCOL_MAJOR {
-        return Err(format!(
-            "The worker speaks event protocol {protocol}; this window supports protocol {PROTOCOL_MAJOR}."
-        ));
+    // `--worker --version` answers with a protocol-1 session: `hello`, then a
+    // `result` whose report repeats `tool_version` and `protocol`.
+    let mut hello_protocol = None;
+    for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
+        match Event::parse(line) {
+            Event::Hello(h) => hello_protocol = Some(h.protocol),
+            Event::Result(o) => {
+                let report = o.report.filter(|_| o.ok).ok_or_else(|| {
+                    o.error
+                        .map_or("The worker could not report its version.".into(), |e| {
+                            format!("The worker could not report its version: {}", e.message)
+                        })
+                })?;
+                let protocol = report
+                    .get("protocol")
+                    .and_then(Value::as_u64)
+                    .or(hello_protocol)
+                    .ok_or("The worker's answer has no protocol version.")?;
+                if protocol != PROTOCOL_MAJOR {
+                    return Err(format!(
+                        "The worker speaks event protocol {protocol}; this window supports protocol {PROTOCOL_MAJOR}."
+                    ));
+                }
+                let library = report
+                    .get("tool_version")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                return Ok(BackendVersion {
+                    tool: env!("CARGO_PKG_VERSION").into(),
+                    library,
+                    protocol,
+                });
+            }
+            Event::Malformed { line, .. } => {
+                let shown: String = line.chars().take(80).collect();
+                return Err(format!(
+                    "The operation worker gave an unreadable answer (\"{shown}\")."
+                ));
+            }
+            _ => {}
+        }
     }
-    let library = value
-        .get("library")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    Ok(BackendVersion {
-        tool,
-        library,
-        protocol,
-    })
+    Err("The operation worker gave no version answer.".into())
 }
 
 #[cfg(test)]
@@ -248,13 +280,18 @@ mod tests {
 
     #[test]
     fn version_check() {
-        let v = check_version(r#"{"tool":"0.1.0","library":"0.1.1","protocol":1}"#).unwrap();
-        assert_eq!(v.library.as_deref(), Some("0.1.1"));
+        let ok = concat!(
+            r#"{"type":"hello","seq":0,"elapsed_ms":0,"protocol":1,"tool_version":"0.2.0","command":"--version"}"#,
+            "\n",
+            r#"{"type":"result","seq":1,"elapsed_ms":1,"ok":true,"report":{"tool_version":"0.2.0","protocol":1},"error":null}"#
+        );
+        let v = check_version(ok).unwrap();
+        assert_eq!(v.library.as_deref(), Some("0.2.0"));
         assert!(check_version("rust-mirror 0.1.1\n")
             .unwrap_err()
             .contains("unreadable"));
-        assert!(check_version(r#"{"tool":"0.3.0","protocol":2}"#)
-            .unwrap_err()
-            .contains("protocol 2"));
+        let p2 = r#"{"type":"result","ok":true,"report":{"tool_version":"9.0.0","protocol":2}}"#;
+        assert!(check_version(p2).unwrap_err().contains("protocol 2"));
+        assert!(check_version("").unwrap_err().contains("no version"));
     }
 }

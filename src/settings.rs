@@ -16,6 +16,7 @@ pub struct Settings {
     pub publish_url: String,
     pub publish_ca: String,
     pub publish_user: String,
+    pub generations_dir: String,
 }
 
 /// `<config dir>/rust-mirror-gui/settings.json`, or `None` if no home is known.

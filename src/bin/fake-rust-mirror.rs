@@ -33,8 +33,22 @@ fn main() {
     if args.first().map(String::as_str) == Some("--version") {
         match scenario.as_str() {
             "legacy" => println!("not json"),
-            "protocol2" => println!(r#"{{"tool":"0.9.0","protocol":2}}"#),
-            _ => println!(r#"{{"tool":"0.0.0-fake","library":"none (fake)","protocol":1}}"#),
+            "protocol2" => {
+                println!(
+                    r#"{{"type":"hello","seq":0,"elapsed_ms":0,"protocol":2,"tool_version":"9.0.0","command":"--version"}}"#
+                );
+                println!(
+                    r#"{{"type":"result","seq":1,"elapsed_ms":0,"ok":true,"report":{{"tool_version":"9.0.0","protocol":2}},"error":null}}"#
+                );
+            }
+            _ => {
+                println!(
+                    r#"{{"type":"hello","seq":0,"elapsed_ms":0,"protocol":1,"tool_version":"0.0.0-fake","command":"--version"}}"#
+                );
+                println!(
+                    r#"{{"type":"result","seq":1,"elapsed_ms":0,"ok":true,"report":{{"tool_version":"0.0.0-fake","protocol":1}},"error":null}}"#
+                );
+            }
         }
         return;
     }
@@ -73,7 +87,7 @@ fn main() {
         });
     }
     emit(&format!(
-        r#"{{"type":"hello","protocol":1,"tool":"0.2.0-fake","command":"{command}","heartbeat_ms":500}}"#
+        r#"{{"type":"hello","protocol":1,"tool_version":"0.0.0-fake","command":"{command}","heartbeat_ms":500}}"#
     ));
     eprintln!(
         "fake-rust-mirror: simulating `{command}` (scenario {scenario}); no files are written"
@@ -160,7 +174,7 @@ fn main() {
                     check_cancel();
                     std::thread::sleep(step);
                     emit(&format!(
-                        r#"{{"type":"bytes","path":"{path}","bytes":{},"total":{size}}}"#,
+                        r#"{{"type":"bytes","path":"{path}","count":{},"total":{size}}}"#,
                         size * c / chunks
                     ));
                     if scenario == "fail" && path.contains("rust-std") && c == 5 {
@@ -183,7 +197,7 @@ fn main() {
                     }
                 }
                 emit(&format!(
-                    r#"{{"type":"artifact","path":"{path}","action":"verified"}}"#
+                    r#"{{"type":"hashing","path":"{path}","count":{size},"total":{size}}}"#
                 ));
             }
         }
