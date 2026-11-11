@@ -16,6 +16,10 @@ for validation and known limits.
   JSON-lines event protocol. The window never blocks. It shows the live stage,
   files, bytes and time since the last event, and warns when the worker stops
   sending heartbeats.
+- Uses rust-mirror 0.2.0 event protocol 1: CLI commands run through
+  `rust_mirror::cli::run_with_events` with `--cancel-stdin`. The window parses
+  typed events (stage, artifact, bytes, hashing, heartbeat with `progress_seq`)
+  and typed error kinds.
 - Stop asks the worker to stop safely; "End process now" is offered when it is
   stopping or stalled. Sync explains what is kept for Resume. Publish explains
   that partial remote files must not be activated.
@@ -24,6 +28,9 @@ for validation and known limits.
   - Plan preview: metadata only.
   - Sync: new run, resume or start over.
   - Rustup finish.
-  - Publish to Nexus Raw or a static HTTPS host, with an optional CA bundle and
-    Basic credentials that are passed only to the worker.
+  - Generations and retention: discover, preview a policy with the library's
+    reasons, and delete only after a typed confirmation.
+  - Publish to Nexus Raw or a static HTTPS host, with a no-write destination
+    check, an optional CA bundle, and Basic credentials that are passed only to
+    the worker.
 - Each page shows the equivalent `rust-mirror` command.

@@ -11,7 +11,7 @@ in a hidden worker copy of the same program, which reports progress to the windo
 over a JSON-lines event protocol. If an operation hangs, the window says so and
 can stop or end it.
 
-![Sync running in rust-mirror-gui](https://raw.githubusercontent.com/rustcommons/rust-mirror-gui/main/docs/screenshots/real-sync-running.png)
+![Sync running in rust-mirror-gui](https://raw.githubusercontent.com/rustcommons/rust-mirror-gui/main/docs/screenshots/sync-resume-running.png)
 
 **Status: 0.1.0, first release.** It works for the flows listed below. Remote
 Desktop, screen readers and Windows/macOS runtime behavior are not yet verified;
@@ -60,8 +60,10 @@ writes to a server: use only a fresh, empty test repository.
   - Plan preview.
   - Sync, with resume or start over.
   - Rustup finish.
-  - Publish.
-- **Planned:** a generations and retention page, and loading existing configurations.
+  - Generations and retention: list, preview, then delete only after you type a
+    confirmation.
+  - Publish, with a no-write destination check first.
+- **Planned:** loading existing configurations and download sizes in the preview.
 - **Never** activates Nexus groups, deletes remote data or changes clients.
   Credentials are passed only to the worker process and never saved.
 

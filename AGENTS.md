@@ -22,9 +22,10 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   offers ending the process. Tell the user what is kept for Resume.
 - Do not invent protocol fields that conflict with rust-mirror's spec. Coordinate
   protocol needs with the rust-mirror maintainers.
-- Until rust-mirror 0.2.0 is on crates.io, the worker bridges 0.1.1 through its
-  public `Source` trait (`src/worker.rs`). Switch to the crates.io 0.2.0 event API
-  before merging the prototype PR. Git or path dependencies are for development only.
+- The worker uses rust-mirror's published event API: `cli::run_with_events` for
+  CLI commands, and `events::Control` with `JsonLines` for GUI-only commands.
+  Depend on rust-mirror from crates.io only. Git or path dependencies are for
+  local development and must never be committed for a release.
 - `src/bin/fake-rust-mirror.rs` is a test stand-in that only emits scripted
   events (selected with `RUST_MIRROR_GUI_WORKER`). Never ship it or describe it
   as a mirror tool.
@@ -36,7 +37,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   owner authorization. Never log credentials or disable TLS verification.
 - Dependencies: eframe and rust-mirror (approved 2026-11-11), plus serde and
   serde_json for the event protocol (flagged for owner confirmation with the
-  prototype). Add nothing else without owner approval.
+  first release). Add nothing else without owner approval.
 - Publishing crates, binaries or releases requires explicit owner authorization.
   CI build artifacts for owner trials are allowed; GitHub Releases are not.
   Do not publish placeholder crates to reserve names.

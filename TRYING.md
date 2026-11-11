@@ -1,22 +1,20 @@
-# Trying the rust-mirror GUI prototype (Windows x86-64)
+# Trying rust-mirror-gui on Windows x86-64
 
-This is an **early prototype** for the owner's trial. It is not a release.
+This guide is for trying release 0.1.0 on Windows. Windows runtime behavior was
+not verified before release, so please report what you see.
 
 The rust-mirror engine is compiled into this one program, so there is nothing else
 to install. Each operation runs in a separate hidden copy of the program (a
 "worker"). If an operation hangs or crashes, the window stays usable and can end
 it.
 
-> Prototype build note: until rust-mirror 0.2.0 is published, the built-in engine
-> is rust-mirror **0.1.1**. Live progress comes from a temporary bridge:
-> - Stop takes effect at the next downloaded block.
-> - Hashing and publishing cannot be interrupted, only ended.
-> - Errors are not yet sorted into kinds.
+The built-in engine is rust-mirror 0.2.0. You can also install the app with
+`cargo install rust-mirror-gui --locked` (Rust 1.95+) instead of using the CI build.
 
 ## 1. Download and start
 
 1. On GitHub, open **rustcommons/rust-mirror-gui → Actions → CI** and pick the
-   latest successful run for the prototype pull request (or `main` once merged).
+   latest successful run on `main`.
 2. Under **Artifacts**, download `rust-mirror-gui-windows-x86_64` and unzip it.
 3. Run `rust-mirror-gui.exe`. The file is not signed, so Windows SmartScreen may
    warn. Choose **More info → Run anyway**.
@@ -24,7 +22,7 @@ it.
 Nothing is installed and no Rust toolchain is needed. The app remembers form
 values (never passwords) in `%APPDATA%\rust-mirror-gui\settings.json`.
 
-The top bar should show **"✔ rust-mirror 0.1.1 built in · event protocol 1"**.
+The top bar should show **"✔ rust-mirror 0.2.0 built in · event protocol 1"**.
 If it shows a red message instead, open **About the engine**. Security software
 may be blocking the program from starting its own worker copy.
 

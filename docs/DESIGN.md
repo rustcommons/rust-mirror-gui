@@ -1,6 +1,6 @@
 # rust-mirror-gui design
 
-Status: **approved direction, prototype in progress.**
+Status: **implemented in 0.1.0** (first release, 2026-11-11). The proposal sections are kept for history.
 
 ## Decisions (owner, 2026-11-11)
 
@@ -21,16 +21,23 @@ Status: **approved direction, prototype in progress.**
     the window.
 
   See [Section 3.4](#34-architecture).
-- **Provisional until rust-mirror 0.2.0.** The protocol spec is not yet on
-  rust-mirror's main branch, and 0.1.1 has no event or cancel API. The worker
-  ([`src/worker.rs`](../src/worker.rs)) therefore bridges 0.1.1 through its
-  public `Source` trait. Before the prototype PR merges, it switches to the
-  crates.io 0.2.0 event API.
+- **Protocol 1 (rust-mirror 0.2.0).** The worker runs rust-mirror CLI commands
+  through `rust_mirror::cli::run_with_events`, the same code path as
+  `rust-mirror --events jsonl --cancel-stdin`. GUI-only commands (plan of all
+  selections, retention preview/apply with an inline policy) use the library's
+  `events::Control` and `JsonLines`. The window parses
+  [EVENTS.md](https://github.com/rustcommons/rust-mirror/blob/main/docs/EVENTS.md)
+  protocol 1.
 
 Sections 2 and 3.1–3.3 below are the original proposal (merged in PR #1) and are
-kept as written. The gaps in Section 2.3 now apply to the library API used by the
-worker. G1 events, G2 cancel and G4 error kinds are requested for 0.2.0. G7
-publish progress, G6 inspect and G11 retention follow.
+kept as written; they describe rust-mirror 0.1.1. rust-mirror 0.2.0 closes:
+- G1 events, G2 cancel and G4 typed errors (protocol 1);
+- G7 publish preflight and progress;
+- G11 retention.
+
+G3 sizes, G5 run-state inspection (partly covered by `generations`), G8 release
+discovery, G9 config replacement, G10 proxy settings and G12 exact plan replay
+remain open.
 
 ## Original proposal
 
@@ -224,7 +231,7 @@ flowchart LR
     W["Worker process<br/>same exe, --worker"]
   end
   UI -- "spawn: --worker sync/rustup/publish …" --> W
-  W -- "stdout: JSON lines<br/>hello, stage, artifact, bytes, heartbeat, result" --> UI
+  W -- "stdout: JSON lines (protocol 1)<br/>hello, stage, artifact, bytes, hashing, heartbeat, result" --> UI
   W -- "stderr: library text" --> UI
   UI -. "stdin: cancel line, then close; or kill" .-> W
   W -- "calls" --> L["rust-mirror library (compiled in)"]
@@ -239,12 +246,12 @@ or Nexus itself.
   timeout). The answer reports the GUI version, the compiled-in library version
   and the protocol version. A failure means the child process could not run, for
   example because security software blocked it.
-- **Liveness:** each event resets a "last event" clock. The `hello` event states
-  the heartbeat interval (1 s for the built-in worker). With no event for 3× that
-  interval (minimum 5 s), the job is shown as **stalled**. Heartbeats also carry
-  `idle_ms`, the time since the last transfer progress. This separates "worker
-  alive but nothing moving" from "worker unresponsive". `idle_ms` is provisional
-  until EVENTS.md.
+- **Liveness:** each event resets a "last event" clock. rust-mirror emits an
+  independent heartbeat about once per second. With no event for 5 s (3× the
+  interval, minimum 5 s), the job is shown as **stalled**. A separate clock
+  tracks the last non-heartbeat event; the protocol's `progress_seq` identifies
+  it. When heartbeats arrive but nothing has progressed for 30 s, the window
+  reports "alive, but no new progress", naming the heartbeat's current operation.
 - **Stop:** writes a cancel line to stdin, then closes stdin. While stopping, or
   when stalled, the window offers "End process now", which terminates the worker.
   For sync, verified progress is kept for Resume. For publish, the server may
@@ -252,12 +259,16 @@ or Nexus itself.
 - **Results:** the outcome comes from the final `result` event. A worker that
   exits without one is reported as such. Unknown or unreadable lines are counted
   and logged, never fatal.
-- **0.1.1 bridge** (until 0.2.0):
-  - Artifact and byte events come from wrapping the public `Source` trait.
-  - Stop takes effect at the next transfer write. Hashing, assembly and publish
-    cannot be interrupted, so the window offers ending the process.
-  - Error kinds are only `cancelled` or `unclassified`.
-  - Sync stages appear as the library's stderr text.
+- **Protocol 1 wiring:**
+  - rust-mirror CLI commands (sync, rustup, publish including `--preflight`, and
+    generations) run through `cli::run_with_events` with `--cancel-stdin`.
+  - Plan preview of all selections and retention preview/apply use library calls
+    inside `events::Control` with `JsonLines`, emitting the same hello/result
+    framing.
+  - Error kinds are the spec's typed kinds.
+  - Stop takes effect at the library's next cancellation checkpoint (between
+    files and inside transfer/copy/hash loops).
+
 - **Credentials** (publish) go only into the worker's environment
   (`NEXUS_USERNAME`/`NEXUS_PASSWORD`), never into arguments, logs or settings.
 - **Config file:** the Selections page writes schema-1 TOML text. The library
@@ -265,22 +276,22 @@ or Nexus itself.
 
 ## 4. Screens
 
-### Prototype (running app)
+### Release 0.1.0 (running app)
 
-These are real screenshots of `rust-mirror-gui`, captured 2026-11-11 on Linux
-aarch64 (Xvfb with Mesa lavapipe software Vulkan). They show the built-in worker
-with the rust-mirror 0.1.1 library, downloading from static.rust-lang.org into
-`/tmp`. The run covered 1.90.0, default profile plus rust-src, and 4 hosts (about
-1.3 GB). It was stopped and then resumed to completion.
+These are real screenshots of `rust-mirror-gui` with the built-in rust-mirror
+0.2.0 worker, captured 2026-11-11 on Linux aarch64 (Xvfb with Mesa lavapipe
+software Vulkan). Downloads came from static.rust-lang.org into `/tmp`. Publish
+targeted a local HTTPS test server, not Nexus.
 
-![Sync running](screenshots/real-sync-running.png)
-![Sync stopped](screenshots/real-sync-stopped.png)
-![Sync resumed and finished](screenshots/real-sync-resumed.png)
+![Plan preview](screenshots/plan-preview.png)
+![Sync resuming after Stop](screenshots/sync-resume-running.png)
+![Sync finished](screenshots/sync-finished.png)
+![Generations and retention preview](screenshots/generations-preview.png)
+![Publish destination check](screenshots/publish-check.png)
+![Publish finished](screenshots/publish-done.png)
 
-More: [small sync finished](screenshots/real-sync-finished.png),
-[Rustup finish](screenshots/real-rustup-finished.png). Stall detection and
-"end process" are covered by the automated tests against the fake backend
-(`tests/backend.rs`).
+Stall detection and "end process" are covered by automated tests against the
+fake worker (`tests/backend.rs`).
 
 ### Mockups (original proposal)
 
