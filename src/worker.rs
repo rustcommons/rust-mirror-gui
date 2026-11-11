@@ -104,6 +104,7 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
         Err(e) => return finish(&shared, Err(e)),
     };
     let result = match command.as_str() {
+        "plan" => plan(&shared, &opts),
         "sync" => sync(&shared, &opts),
         "rustup" => rustup(&shared, &opts),
         "publish" => publish(&shared, &opts),
@@ -218,6 +219,23 @@ impl Options {
     fn flag(&self, key: &str) -> bool {
         self.flags.iter().any(|f| f == key)
     }
+}
+
+/// Resolve every selection's metadata (no payload downloads, no files written)
+/// and return the frozen plans for preview.
+fn plan(shared: &Arc<Shared>, o: &Options) -> Result<Value, String> {
+    let config =
+        rust_mirror::selection::Config::read(&o.path("--config")?).map_err(|e| e.to_string())?;
+    let source = Observed::new(HttpsSource::default(), shared.clone());
+    let total = config.selections.len() as u64;
+    let mut plans = Vec::new();
+    for (i, selection) in config.selections.iter().enumerate() {
+        shared.stage(&format!("resolve {}", selection.name), i as u64 + 1, total);
+        let resolved = rust_mirror::selection::resolve(&config, &selection.name, &source)
+            .map_err(|e| format!("{}: {e}", selection.name))?;
+        plans.push(serde_json::to_value(&resolved.plan).map_err(|e| e.to_string())?);
+    }
+    Ok(json!({"plans": plans}))
 }
 
 fn sync(shared: &Arc<Shared>, o: &Options) -> Result<Value, String> {

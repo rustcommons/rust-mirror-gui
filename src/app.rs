@@ -15,7 +15,6 @@ enum Page {
     Selections,
     Plan,
     Sync,
-    Generations,
     Publish,
 }
 
@@ -29,7 +28,6 @@ const GREEN: Color32 = Color32::from_rgb(26, 127, 55);
 const AMBER: Color32 = Color32::from_rgb(154, 103, 0);
 const RED: Color32 = Color32::from_rgb(207, 34, 46);
 const BLUE: Color32 = Color32::from_rgb(9, 105, 218);
-const PURPLE: Color32 = Color32::from_rgb(111, 60, 195);
 
 pub struct App {
     settings: Settings,
@@ -162,9 +160,8 @@ impl eframe::App for App {
                 .show(ui, |ui| match self.page {
                     Page::Backend => self.page_backend(ui, &ctx),
                     Page::Selections => self.page_selections(ui),
-                    Page::Plan => page_plan(ui),
+                    Page::Plan => self.page_plan(ui, &ctx),
                     Page::Sync => self.page_sync(ui, &ctx),
-                    Page::Generations => page_generations(ui),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
         });
@@ -212,10 +209,10 @@ impl App {
                 let (text, color) = health_text(*op, job);
                 ui.label(RichText::new(format!("{}: {text}", job.label)).color(color));
                 if !job.finished() && ui.small_button("Show").clicked() {
-                    self.page = if *op == Op::Publish {
-                        Page::Publish
-                    } else {
-                        Page::Sync
+                    self.page = match op {
+                        Op::Publish => Page::Publish,
+                        Op::Plan => Page::Plan,
+                        _ => Page::Sync,
                     };
                 }
             }
@@ -236,14 +233,11 @@ impl App {
         };
         ui.small("PREPARE (connected machine)");
         item(ui, Page::Selections, "1  Selections", None);
-        item(ui, Page::Plan, "2  Plan preview", Some("later"));
+        item(ui, Page::Plan, "2  Plan preview", None);
         item(ui, Page::Sync, "3  Sync & finish", None);
         ui.add_space(8.0);
-        ui.small("MANAGE");
-        item(ui, Page::Generations, "4  Generations", Some("later"));
-        ui.add_space(8.0);
         ui.small("DELIVER (offline network)");
-        item(ui, Page::Publish, "5  Publish", None);
+        item(ui, Page::Publish, "4  Publish", None);
         ui.add_space(8.0);
         ui.small("HELP");
         item(ui, Page::Backend, "About the engine", None);
@@ -616,6 +610,39 @@ impl App {
         self.job_view(ui, &[Op::Publish]);
     }
 
+    fn page_plan(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.heading("Plan preview");
+        ui.label("Read upstream metadata for every selection and list exactly which files a sync would download. Nothing large is downloaded and nothing is written.");
+        ui.add_space(8.0);
+        text_field(
+            ui,
+            "Configuration file",
+            &mut self.settings.config_path,
+            "mirror.toml (from the Selections page)",
+        );
+        let ready = !self.settings.config_path.trim().is_empty();
+        let spec = ops::plan(&ops::worker_program(), &self.settings.config_path);
+        if self.start_row(ui, ready, "Preview plan", &spec) {
+            self.start(ctx, Op::Plan, spec);
+        }
+        banner(ui, BLUE, "Download sizes are not known before downloading (rust-mirror 0.1.1). A sync resolves metadata again, so a moving channel such as `stable` can change between this preview and the sync; the sync report shows what was actually frozen.");
+        let plans = self
+            .job
+            .as_ref()
+            .filter(|(op, _)| *op == Op::Plan)
+            .and_then(|(_, j)| j.progress.result.as_ref())
+            .and_then(|r| r.report.as_ref())
+            .and_then(|r| r.get("plans"))
+            .and_then(|p| p.as_array())
+            .cloned();
+        if let Some(plans) = plans {
+            ui.add_space(8.0);
+            show_plans(ui, &plans);
+        }
+        ui.add_space(8.0);
+        self.job_view(ui, &[Op::Plan]);
+    }
+
     /// Start button with the reason it is disabled and the equivalent command.
     fn start_row(
         &mut self,
@@ -754,15 +781,43 @@ impl App {
                     };
                 }
                 ui.end_row();
-                ui.label("Transferred");
-                let done = p.files.values().filter(|f| f.done).count();
-                ui.label(format!(
-                    "{} · {} of {} files done",
-                    human_bytes(p.bytes_total),
-                    done,
-                    p.files.len()
-                ));
-                ui.end_row();
+                if !p.files.is_empty() {
+                    ui.label("Transferred");
+                    let done = p.files.values().filter(|f| f.done).count();
+                    ui.label(format!(
+                        "{} · {} of {} files done",
+                        human_bytes(p.bytes_total),
+                        done,
+                        p.files.len()
+                    ));
+                    ui.end_row();
+                }
+                // Scalar fields of a successful report (e.g. mirror path, files,
+                // verified bytes), shown as reported by the library.
+                if let Some(report) = p
+                    .result
+                    .as_ref()
+                    .filter(|r| r.ok)
+                    .and_then(|r| r.report.as_ref())
+                    .and_then(|r| r.as_object())
+                {
+                    for (key, value) in report {
+                        let shown = match value {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Number(n) => match n.as_u64() {
+                                Some(b) if key.ends_with("bytes") || key.ends_with("bytes_verified") => {
+                                    format!("{} ({b})", human_bytes(b))
+                                }
+                                _ => n.to_string(),
+                            },
+                            serde_json::Value::Bool(b) => b.to_string(),
+                            _ => continue,
+                        };
+                        ui.label(RichText::new(key.replace('_', " ")).weak());
+                        ui.add(egui::Label::new(RichText::new(shown).monospace()).selectable(true));
+                        ui.end_row();
+                    }
+                }
                 if p.protocol_warnings > 0 {
                     ui.label("Protocol");
                     ui.label(
@@ -943,14 +998,73 @@ fn health_text(op: Op, job: &Job) -> (String, Color32) {
     }
 }
 
-fn page_plan(ui: &mut egui::Ui) {
-    ui.heading("Plan preview");
-    banner(ui, PURPLE, "Planned. This page will list every file the next sync downloads, once rust-mirror reports plans through the event protocol. Until then, Sync shows each file as it is processed.");
-}
-
-fn page_generations(ui: &mut egui::Ui) {
-    ui.heading("Generations & retention");
-    banner(ui, PURPLE, "Planned. This page will list local generations and preview what a retention policy would remove, once rust-mirror ships its retention commands. Nothing is ever deleted on Nexus.");
+fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
+    let text = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
+    let total: usize = plans
+        .iter()
+        .map(|p| {
+            p.get("artifacts")
+                .and_then(|a| a.as_array())
+                .map_or(0, |a| a.len())
+        })
+        .sum();
+    ui.label(
+        RichText::new(format!(
+            "{} selection(s) · {} files to download",
+            plans.len(),
+            total
+        ))
+        .strong(),
+    );
+    for (i, plan) in plans.iter().enumerate() {
+        let sel = plan.get("selection").cloned().unwrap_or_default();
+        let artifacts = plan
+            .get("artifacts")
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let title = format!(
+            "{} — requested {} → pinned {} (Rust {}, {}) · {} files",
+            text(&sel, "name"),
+            text(&sel, "toolchain"),
+            text(plan, "pinned_toolchain"),
+            text(plan, "resolved_release"),
+            text(plan, "date"),
+            artifacts.len()
+        );
+        egui::CollapsingHeader::new(title)
+            .id_salt(("plan", i))
+            .default_open(i == 0)
+            .show(ui, |ui| {
+                egui::Grid::new(("plan-grid", i))
+                    .striped(true)
+                    .num_columns(5)
+                    .spacing([14.0, 3.0])
+                    .show(ui, |ui| {
+                        for h in ["Package", "Target", "Kind", "File", "SHA-256"] {
+                            ui.label(RichText::new(h).strong());
+                        }
+                        ui.end_row();
+                        for a in &artifacts {
+                            ui.label(text(a, "package"));
+                            ui.label(RichText::new(text(a, "target")).monospace());
+                            ui.label(text(a, "kind"));
+                            let path = text(a, "path");
+                            ui.label(RichText::new(short_path(&path)).monospace())
+                                .on_hover_text(&path);
+                            let sha = text(a, "sha256");
+                            ui.label(
+                                RichText::new(format!("{}…", &sha[..sha.len().min(12)]))
+                                    .monospace(),
+                            )
+                            .on_hover_text(&sha);
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
 }
 
 fn banner(ui: &mut egui::Ui, color: Color32, text: &str) {

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
+    Plan,
     Sync,
     Rustup,
     Publish,
@@ -38,6 +39,11 @@ fn finish(program: &str, label: &str, mut args: Vec<OsString>, env: Vec<(String,
         env,
         label: label.into(),
     }
+}
+
+pub fn plan(program: &str, config: &str) -> Spec {
+    let a: Vec<OsString> = vec!["plan".into(), "--config".into(), config.trim().into()];
+    finish(program, "Plan preview", a, vec![])
 }
 
 pub fn sync(program: &str, config: &str, output: &str, previous: &str, mode: SyncMode) -> Spec {
@@ -119,6 +125,7 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::Rustup, "cancelled") | (Op::Rustup, "killed") | (Op::Rustup, "no_result") => {
             "The Rustup step does not resume. Delete the incomplete output folder, then run it again."
         }
+        (Op::Plan, _) => "A preview only reads metadata and writes nothing. Check the message, then preview again.",
         (_, "cancelled") | (_, "killed") | (_, "no_result") => {
             "Downloaded and verified files are kept. To continue, choose “Resume” with the same configuration, output and previous mirror, then start again."
         }

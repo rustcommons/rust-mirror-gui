@@ -1,13 +1,17 @@
 //! Runs the real process client against the fake backend binary.
-use rust_mirror_gui::job::{discover, Health, Job, Spec};
+#[cfg(feature = "fake-backend")]
+use rust_mirror_gui::job::Spec;
+use rust_mirror_gui::job::{discover, Health, Job};
 use rust_mirror_gui::ops::{self, SyncMode};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "fake-backend")]
 fn fake() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_fake-rust-mirror"))
 }
 
+#[cfg(feature = "fake-backend")]
 fn spec(scenario: &str, step_ms: u32) -> Spec {
     let mut s = ops::sync(
         &fake().to_string_lossy(),
@@ -39,6 +43,7 @@ fn wait_for(job: &mut Job, timeout: Duration, mut done: impl FnMut(&Job) -> bool
     }
 }
 
+#[cfg(feature = "fake-backend")]
 fn discover_with(scenario: &str) -> Result<rust_mirror_gui::protocol::BackendVersion, String> {
     // discover() passes no extra environment, so set it process-wide. Other
     // tests set FAKE_SCENARIO on their own child, which overrides this.
@@ -48,6 +53,7 @@ fn discover_with(scenario: &str) -> Result<rust_mirror_gui::protocol::BackendVer
     r
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn discovery_accepts_and_refuses() {
     // One test so the process-wide FAKE_SCENARIO variable is not raced.
@@ -64,6 +70,7 @@ fn discovery_accepts_and_refuses() {
     .contains("Could not start"));
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn successful_run_reports_progress() {
     let mut job = Job::start(spec("ok", 5), || {}).unwrap();
@@ -75,6 +82,7 @@ fn successful_run_reports_progress() {
     assert_eq!(job.progress.hello.as_ref().unwrap().command, "sync");
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn typed_failure_is_reported() {
     let mut job = Job::start(spec("fail", 5), || {}).unwrap();
@@ -85,6 +93,7 @@ fn typed_failure_is_reported() {
     }
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn crash_without_result_is_detected() {
     let mut job = Job::start(spec("crash", 5), || {}).unwrap();
@@ -96,6 +105,7 @@ fn crash_without_result_is_detected() {
     );
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn stop_is_graceful() {
     let mut job = Job::start(spec("ok", 200), || {}).unwrap();
@@ -111,6 +121,7 @@ fn stop_is_graceful() {
     }
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn stalled_backend_is_flagged_and_can_be_killed() {
     let mut job = Job::start(spec("stall", 5), || {}).unwrap();
@@ -126,6 +137,7 @@ fn stalled_backend_is_flagged_and_can_be_killed() {
     assert_eq!(job.health(), Health::Killed);
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn heartbeats_keep_a_slow_stage_alive() {
     let mut job = Job::start(spec("quiet-stage", 5), || {}).unwrap();
@@ -146,6 +158,7 @@ fn heartbeats_keep_a_slow_stage_alive() {
     wait_for(&mut job, Duration::from_secs(30), Job::finished);
 }
 
+#[cfg(feature = "fake-backend")]
 #[test]
 fn garbage_lines_are_counted_not_fatal() {
     let mut job = Job::start(spec("garbage", 5), || {}).unwrap();
