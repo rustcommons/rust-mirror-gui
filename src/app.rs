@@ -64,7 +64,7 @@ impl App {
             },
             settings,
             last_save: Instant::now(),
-            page: Page::Backend,
+            page: Page::Selections,
             backend: Backend::Err(String::new()),
             draft: ConfigDraft::default(),
             selected: 0,
@@ -84,7 +84,7 @@ impl App {
     }
 
     fn check_backend(&mut self, ctx: &egui::Context) {
-        let program = std::path::PathBuf::from(self.settings.backend.trim());
+        let program = std::path::PathBuf::from(ops::worker_program());
         let (tx, rx) = std::sync::mpsc::channel();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
@@ -149,7 +149,7 @@ impl eframe::App for App {
                     env!("CARGO_PKG_VERSION")
                 ));
                 ui.separator();
-                ui.small("All mirroring work is done by the rust-mirror program.");
+                ui.small("Mirroring work runs in a separate worker process using the built-in rust-mirror library.");
             });
         });
         egui::Panel::left("nav")
@@ -188,20 +188,21 @@ impl App {
             match &self.backend {
                 Backend::Checking(_) => {
                     ui.spinner();
-                    ui.label("Checking rust-mirror…");
+                    ui.label("Starting the operation worker…");
                 }
                 Backend::Ok(v) => {
                     ui.label(
                         RichText::new(format!(
-                            "✔ rust-mirror {} · event protocol {}",
-                            v.tool, v.protocol
+                            "✔ rust-mirror {} built in · event protocol {}",
+                            v.library.as_deref().unwrap_or("?"),
+                            v.protocol
                         ))
                         .color(GREEN),
                     );
                 }
                 Backend::Err(_) => {
-                    ui.label(RichText::new("✖ rust-mirror not usable").color(RED));
-                    if ui.small_button("Fix…").clicked() {
+                    ui.label(RichText::new("✖ operation worker not working").color(RED));
+                    if ui.small_button("Details").clicked() {
                         self.page = Page::Backend;
                     }
                 }
@@ -233,9 +234,6 @@ impl App {
                 self.page = page;
             }
         };
-        ui.small("SETUP");
-        item(ui, Page::Backend, "rust-mirror program", None);
-        ui.add_space(8.0);
         ui.small("PREPARE (connected machine)");
         item(ui, Page::Selections, "1  Selections", None);
         item(ui, Page::Plan, "2  Plan preview", Some("later"));
@@ -246,51 +244,52 @@ impl App {
         ui.add_space(8.0);
         ui.small("DELIVER (offline network)");
         item(ui, Page::Publish, "5  Publish", None);
+        ui.add_space(8.0);
+        ui.small("HELP");
+        item(ui, Page::Backend, "About the engine", None);
     }
 
     fn page_backend(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.heading("rust-mirror program");
-        ui.label("This app runs the rust-mirror command-line program and shows what it reports. Choose which program to use.");
-        ui.add_space(8.0);
-        let changed = text_field(
-            ui,
-            "Program path",
-            &mut self.settings.backend,
-            "rust-mirror, or a full path such as C:\\Users\\me\\.cargo\\bin\\rust-mirror.exe",
-        )
-        .lost_focus();
-        ui.horizontal(|ui| {
-            ui.add_space(158.0);
-            if ui.button("Check").clicked() || changed {
-                self.check_backend(ctx);
-            }
-            ui.label(RichText::new("A plain name is looked up on PATH.").weak());
-        });
+        ui.heading("About the engine");
+        ui.label(
+            "The rust-mirror library is compiled into this program. No separate rust-mirror \
+             installation is needed, and the window and engine versions always match.",
+        );
         ui.add_space(8.0);
         match &self.backend {
             Backend::Checking(_) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label("Asking the program for its version…");
+                    ui.label("Starting the operation worker…");
                 });
             }
-            Backend::Ok(v) => {
-                banner(ui, GREEN, &format!("rust-mirror {} is ready. It speaks event protocol {}, which this app supports.", v.tool, v.protocol));
-            }
+            Backend::Ok(v) => banner(
+                ui,
+                GREEN,
+                &format!(
+                    "Ready. rust-mirror-gui {} with rust-mirror library {}; event protocol {}.",
+                    v.tool,
+                    v.library.as_deref().unwrap_or("(not reported)"),
+                    v.protocol
+                ),
+            ),
             Backend::Err(e) if e.is_empty() => {}
             Backend::Err(e) => {
                 banner(ui, RED, e);
-                ui.label("Install rust-mirror 0.2.0 or newer, for example:");
-                ui.code("cargo install rust-mirror --version 0.2.0 --locked");
+                ui.label("Security software may block this program from starting a copy of itself. Allow rust-mirror-gui to run child processes, then check again.");
             }
         }
+        if ui.button("Check again").clicked() {
+            self.check_backend(ctx);
+        }
         ui.add_space(12.0);
-        ui.label(RichText::new("How this app talks to rust-mirror").strong());
-        ui.label(format!(
-            "Each operation starts `{} … --events jsonl`. The program reports stages, files, byte counts and a heartbeat every few seconds as JSON lines. \
-             If the heartbeat stops, this app tells you so, and you can stop or end the program.",
-            self.settings.backend.trim()
-        ));
+        ui.label(RichText::new("How operations run").strong());
+        ui.label(
+            "Each operation runs in a separate copy of this program (a hidden worker process) that calls \
+             the rust-mirror library. The worker reports stages, files, byte counts and a heartbeat every \
+             second. If the heartbeat stops, this window tells you, and you can stop or end the worker \
+             without losing the window. Each page also shows the equivalent rust-mirror command.",
+        );
     }
 
     fn page_selections(&mut self, ui: &mut egui::Ui) {
@@ -479,7 +478,7 @@ impl App {
             && !s.sync_output.trim().is_empty()
             && (self.sync_mode != SyncMode::Force || self.force_confirmed);
         let spec = ops::sync(
-            &s.backend,
+            &ops::worker_program(),
             &s.config_path,
             &s.sync_output,
             &s.sync_previous,
@@ -525,7 +524,7 @@ impl App {
                     && !s.rustup_version.trim().is_empty()
                     && !s.rustup_output.trim().is_empty();
                 let spec = ops::rustup(
-                    &s.backend,
+                    &ops::worker_program(),
                     &s.rustup_snapshot,
                     &s.rustup_version,
                     &s.rustup_output,
@@ -601,7 +600,7 @@ impl App {
             && self.confirm_partial
             && creds_ok;
         let spec = ops::publish(
-            &s.backend,
+            &ops::worker_program(),
             &s.publish_source,
             &s.publish_url,
             &s.publish_ca,
@@ -637,7 +636,7 @@ impl App {
                 )
                 .clicked();
             let why = if !ok {
-                "Set up a compatible rust-mirror program first."
+                "The operation worker is not working; see About the engine."
             } else if busy {
                 "Another operation is running."
             } else if !ready {
@@ -649,7 +648,7 @@ impl App {
         });
         ui.horizontal(|ui| {
             ui.add_space(158.0);
-            ui.label(RichText::new("Command:").weak());
+            ui.label(RichText::new("Same as:").weak());
             ui.add(
                 egui::Label::new(RichText::new(spec.display()).monospace().small())
                     .selectable(true)
@@ -740,6 +739,19 @@ impl App {
                         human_duration(job.last_event.elapsed()),
                         human_duration(p.heartbeat_interval())
                     ));
+                    ui.end_row();
+                    ui.label("Activity");
+                    match p.idle {
+                        Some(idle) if idle >= Duration::from_secs(30) => ui.label(
+                            RichText::new(format!(
+                                "the worker is alive, but nothing visible has progressed for {} (large files are hashed silently)",
+                                human_duration(idle)
+                            ))
+                            .color(AMBER),
+                        ),
+                        Some(_) => ui.label("progressing"),
+                        None => ui.label("not reported"),
+                    };
                 }
                 ui.end_row();
                 ui.label("Transferred");
@@ -886,7 +898,7 @@ impl App {
                     });
             });
         ui.label(
-            RichText::new(format!("Command: {}", job.command_line))
+            RichText::new(format!("Same as: {}", job.command_line))
                 .monospace()
                 .small()
                 .weak(),
@@ -917,7 +929,14 @@ fn health_text(op: Op, job: &Job) -> (String, Color32) {
             AMBER,
         ),
         Health::Succeeded => ("Finished successfully.".into(), GREEN),
-        Health::Failed { kind, message } if kind == "cancelled" => (format!("Stopped. {message}"), AMBER),
+        Health::Failed { kind, message } if kind == "cancelled" => (
+            if message == "stopped by user" {
+                "Stopped at your request.".to_string()
+            } else {
+                format!("Stopped: {message}")
+            },
+            AMBER,
+        ),
         Health::Failed { kind, message } => (format!("Failed [{kind}]: {message}"), RED),
         Health::ExitedWithoutResult(how) => (format!("rust-mirror ended without reporting a result ({how})."), RED),
         Health::Killed => ("Process ended by you.".into(), AMBER),

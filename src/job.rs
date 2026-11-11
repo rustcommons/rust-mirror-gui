@@ -25,10 +25,20 @@ pub struct Spec {
 }
 
 impl Spec {
-    /// Command line for display. Environment values are never included.
+    /// Equivalent rust-mirror CLI command, for display. A leading `--worker`
+    /// is shown as `rust-mirror`. Environment values are never included.
     pub fn display(&self) -> String {
-        let mut out = quote(&self.program.to_string_lossy());
-        for a in &self.args {
+        let mut args = self.args.iter().peekable();
+        let mut out = if args
+            .peek()
+            .is_some_and(|a| *a == crate::protocol::WORKER_ARG)
+        {
+            args.next();
+            "rust-mirror".to_string()
+        } else {
+            quote(&self.program.to_string_lossy())
+        };
+        for a in args {
             out.push(' ');
             out.push_str(&quote(&a.to_string_lossy()));
         }
@@ -107,6 +117,8 @@ pub struct Progress {
     pub result: Option<Outcome>,
     pub protocol_warnings: usize,
     pub events: u64,
+    /// Time without visible progress, as last reported by a heartbeat.
+    pub idle: Option<Duration>,
 }
 
 impl Progress {
@@ -158,7 +170,10 @@ impl Progress {
                 f.total = b.total.or(f.total);
                 None
             }
-            Event::Heartbeat(_) => None,
+            Event::Heartbeat(h) => {
+                self.idle = h.idle_ms.map(Duration::from_millis);
+                None
+            }
             Event::Log(l) => {
                 let kind = match l.level.as_str() {
                     "warn" | "warning" => LogKind::Warn,
@@ -171,6 +186,9 @@ impl Progress {
                 self.result = Some(o.clone());
                 Some(match &o.error {
                     None if o.ok => (LogKind::Info, "finished successfully".into()),
+                    Some(e) if e.kind == "cancelled" => {
+                        (LogKind::Warn, format!("stopped: {}", e.message))
+                    }
                     Some(e) => (
                         LogKind::Error,
                         format!("failed [{}]: {}", e.kind, e.message),
@@ -270,7 +288,16 @@ impl Job {
                         self.push(kind, text);
                     }
                 }
-                Msg::Stderr(line) => self.push(LogKind::Stderr, line),
+                Msg::Stderr(line) => {
+                    // Bridge for rust-mirror 0.1.1, which reports sync stages only
+                    // as text: show them as stage detail. Display only.
+                    if let (Some(detail), Some(stage)) =
+                        (line.strip_prefix("sync: "), self.progress.stage.as_mut())
+                    {
+                        stage.detail = Some(detail.to_string());
+                    }
+                    self.push(LogKind::Stderr, line)
+                }
                 Msg::StdoutClosed(err) => {
                     self.stdout_closed = true;
                     if let Some(err) = err {
@@ -452,7 +479,7 @@ pub fn discover(
     timeout: Duration,
 ) -> Result<protocol::BackendVersion, String> {
     if program.as_os_str().is_empty() {
-        return Err("Choose the rust-mirror program first.".into());
+        return Err("Could not find this program's own executable path.".into());
     }
     let mut cmd = Command::new(program);
     cmd.args(protocol::VERSION_ARGS)
@@ -460,9 +487,12 @@ pub fn discover(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     no_console_window(&mut cmd);
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Could not start {}: {e}", program.display()))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Could not start the operation worker {}: {e}",
+            program.display()
+        )
+    })?;
     let mut stdout = child.stdout.take().expect("piped");
     let mut stderr = child.stderr.take().expect("piped");
     let out = std::thread::spawn(move || {
@@ -496,7 +526,7 @@ pub fn discover(
     if !status.success() {
         let hint = stderr.lines().next().unwrap_or("").trim();
         return Err(format!(
-            "This rust-mirror does not support the event protocol ({}{}{}). rust-mirror 0.2.0 or newer is required.",
+            "The operation worker failed to start ({}{}{}).",
             describe_exit(&status),
             if hint.is_empty() { "" } else { ": " },
             hint
@@ -577,5 +607,13 @@ mod tests {
         let shown = spec.display();
         assert!(!shown.contains("secret"));
         assert!(shown.contains("\"C:\\my dir\""));
+        let w = crate::ops::sync(
+            "C:/app/gui.exe",
+            "m.toml",
+            "o",
+            "",
+            crate::ops::SyncMode::New,
+        );
+        assert_eq!(w.display(), "rust-mirror sync --config m.toml --output o");
     }
 }

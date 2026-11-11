@@ -1,7 +1,7 @@
-//! Builds rust-mirror command lines and explains outcomes. No mirroring logic:
-//! every operation is performed by the rust-mirror process.
+//! Builds worker command lines and explains outcomes. No mirroring logic: every
+//! operation runs in a `--worker` child process that calls the rust-mirror library.
 use crate::job::Spec;
-use crate::protocol::EVENTS_ARGS;
+use crate::protocol::WORKER_ARG;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -19,8 +19,19 @@ pub enum SyncMode {
     Force,
 }
 
+/// The executable that runs operations: this program itself. Developers and
+/// tests may point `RUST_MIRROR_GUI_WORKER` at a stand-in such as the fake backend.
+pub fn worker_program() -> String {
+    if let Some(p) = std::env::var_os("RUST_MIRROR_GUI_WORKER") {
+        return p.to_string_lossy().into_owned();
+    }
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 fn finish(program: &str, label: &str, mut args: Vec<OsString>, env: Vec<(String, String)>) -> Spec {
-    args.extend(EVENTS_ARGS.iter().map(OsString::from));
+    args.insert(0, WORKER_ARG.into());
     Spec {
         program: PathBuf::from(program.trim()),
         args,
@@ -138,7 +149,7 @@ mod tests {
         let s = sync("rust-mirror", "m.toml", "run-2", "", SyncMode::Resume);
         assert_eq!(
             args(&s),
-            ["sync", "--config", "m.toml", "--output", "run-2", "--resume", "--events", "jsonl"]
+            ["--worker", "sync", "--config", "m.toml", "--output", "run-2", "--resume"]
         );
         let s = sync(
             "rust-mirror",

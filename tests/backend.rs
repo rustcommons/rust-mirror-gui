@@ -52,7 +52,7 @@ fn discover_with(scenario: &str) -> Result<rust_mirror_gui::protocol::BackendVer
 fn discovery_accepts_and_refuses() {
     // One test so the process-wide FAKE_SCENARIO variable is not raced.
     assert_eq!(discover_with("ok").unwrap().protocol, 1);
-    assert!(discover_with("legacy").unwrap_err().contains("0.2.0"));
+    assert!(discover_with("legacy").unwrap_err().contains("unreadable"));
     assert!(discover_with("protocol2")
         .unwrap_err()
         .contains("protocol 2"));
@@ -152,4 +152,43 @@ fn garbage_lines_are_counted_not_fatal() {
     wait_for(&mut job, Duration::from_secs(30), Job::finished);
     assert_eq!(job.health(), Health::Succeeded);
     assert_eq!(job.progress.protocol_warnings, 2);
+}
+
+fn gui_exe() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_rust-mirror-gui"))
+}
+
+#[test]
+fn built_in_worker_reports_versions() {
+    let v = discover(&gui_exe(), Duration::from_secs(20)).unwrap();
+    assert_eq!(v.protocol, 1);
+    assert_eq!(
+        v.library.as_deref(),
+        Some(rust_mirror_gui::worker::LIBRARY_VERSION)
+    );
+}
+
+#[test]
+fn built_in_worker_reports_library_errors_as_results() {
+    let dir = std::env::temp_dir().join(format!("rmg-test-{}", std::process::id()));
+    let missing = dir.join("missing.toml");
+    let mut spec = ops::sync(
+        &gui_exe().to_string_lossy(),
+        &missing.to_string_lossy(),
+        &dir.join("out").to_string_lossy(),
+        "",
+        SyncMode::New,
+    );
+    spec.env.clear();
+    let mut job = Job::start(spec, || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert_eq!(job.progress.hello.as_ref().unwrap().command, "sync");
+    match job.health() {
+        Health::Failed { kind, message } => {
+            assert_eq!(kind, "unclassified");
+            assert!(message.contains("regular file"), "{message}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(!dir.join("out").exists());
 }

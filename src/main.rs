@@ -1,6 +1,20 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-fn main() -> eframe::Result {
+fn main() -> std::process::ExitCode {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().is_some_and(|a| a == "--worker") {
+        return rust_mirror_gui::worker::main(args.collect());
+    }
+    match gui() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("rust-mirror-gui: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn gui() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("rust-mirror GUI")

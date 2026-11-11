@@ -6,3 +6,4 @@ pub mod job;
 pub mod ops;
 pub mod protocol;
 pub mod settings;
+pub mod worker;

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
-    pub backend: String,
     pub config_path: String,
     pub sync_output: String,
     pub sync_previous: String,
@@ -38,9 +37,6 @@ pub fn load() -> Settings {
         .and_then(|p| std::fs::read(p).ok())
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    if s.backend.is_empty() {
-        s.backend = "rust-mirror".into();
-    }
     if s.rustup_version.is_empty() {
         s.rustup_version = "1.28.2".into();
     }

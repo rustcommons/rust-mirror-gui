@@ -18,7 +18,11 @@ fn emit(line: &str) {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Accept the worker calling convention: `--worker COMMAND …`.
+    let args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| a != "--worker")
+        .collect();
     let scenario = std::env::var("FAKE_SCENARIO").unwrap_or_else(|_| "ok".into());
     let step = Duration::from_millis(
         std::env::var("FAKE_STEP_MS")
@@ -28,20 +32,13 @@ fn main() {
     );
     if args.first().map(String::as_str) == Some("--version") {
         match scenario.as_str() {
-            "legacy" => println!("rust-mirror 0.1.1"),
+            "legacy" => println!("not json"),
             "protocol2" => println!(r#"{{"tool":"0.9.0","protocol":2}}"#),
-            _ => println!(r#"{{"tool":"0.2.0-fake","protocol":1}}"#),
+            _ => println!(r#"{{"tool":"0.0.0-fake","library":"none (fake)","protocol":1}}"#),
         }
         return;
     }
     let command = args.first().cloned().unwrap_or_default();
-    if !args
-        .windows(2)
-        .any(|w| w[0] == "--events" && w[1] == "jsonl")
-    {
-        eprintln!("fake-rust-mirror: only --events jsonl mode is simulated");
-        std::process::exit(2);
-    }
 
     let cancel = Arc::new(AtomicBool::new(false));
     if scenario != "ignore-cancel" {

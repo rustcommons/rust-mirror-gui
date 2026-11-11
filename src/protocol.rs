@@ -11,12 +11,10 @@ use serde_json::Value;
 
 /// Protocol major version this GUI understands.
 pub const PROTOCOL_MAJOR: u64 = 1;
-/// Oldest rust-mirror release expected to speak the protocol.
-pub const MIN_TOOL_VERSION: (u64, u64, u64) = (0, 2, 0);
-/// Option that switches a rust-mirror command to JSON lines on stdout.
-pub const EVENTS_ARGS: &[&str] = &["--events", "jsonl"];
-/// Arguments that ask rust-mirror for its version and protocol, offline.
-pub const VERSION_ARGS: &[&str] = &["--version", "--json"];
+/// First argument that runs this executable as an operation worker.
+pub const WORKER_ARG: &str = "--worker";
+/// Arguments that ask the worker for its versions and protocol, offline.
+pub const VERSION_ARGS: &[&str] = &[WORKER_ARG, "--version"];
 /// Line written to the backend's stdin to ask for a graceful stop.
 pub const CANCEL_LINE: &str = "{\"type\":\"cancel\"}\n";
 /// Heartbeat interval assumed when `hello` does not state one.
@@ -69,6 +67,9 @@ pub struct Bytes {
 pub struct Heartbeat {
     #[serde(default)]
     pub stage: Option<String>,
+    /// Milliseconds since the operation last made visible progress (provisional).
+    #[serde(default)]
+    pub idle_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -151,55 +152,47 @@ impl Event {
     }
 }
 
-/// Version information reported by `rust-mirror --version --json`.
+/// Version information reported by the worker (`--worker --version`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackendVersion {
     pub tool: String,
+    /// rust-mirror library version compiled into the worker, if reported.
+    pub library: Option<String>,
     pub protocol: u64,
 }
 
-/// Parse the discovery output and check compatibility. The error text is shown
-/// to the user as is.
+/// Parse the worker's version answer and check the protocol. Because the worker
+/// is this same executable, a failure here means a broken build or a blocked
+/// child process, not a version mismatch. The text is shown to the user.
 pub fn check_version(stdout: &str) -> Result<BackendVersion, String> {
     let first = stdout.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let value: Value = serde_json::from_str(first).map_err(|_| {
         let shown: String = first.chars().take(80).collect();
-        format!(
-            "This rust-mirror does not report an event protocol (it printed \"{shown}\"). \
-             rust-mirror 0.2.0 or newer is required."
-        )
+        format!("The operation worker gave an unreadable answer (\"{shown}\").")
     })?;
     let tool = value
         .get("tool")
-        .or_else(|| value.get("version"))
         .and_then(Value::as_str)
-        .ok_or("Version output has no tool version.")?
+        .ok_or("The worker's answer has no tool version.")?
         .to_owned();
     let protocol = value
         .get("protocol")
         .and_then(Value::as_u64)
-        .ok_or("Version output has no protocol version.")?;
-    let parsed =
-        parse_semver(&tool).ok_or_else(|| format!("Unreadable tool version \"{tool}\"."))?;
-    if parsed < MIN_TOOL_VERSION {
-        return Err(format!(
-            "rust-mirror {tool} is too old. Version {}.{}.{} or newer is required.",
-            MIN_TOOL_VERSION.0, MIN_TOOL_VERSION.1, MIN_TOOL_VERSION.2
-        ));
-    }
+        .ok_or("The worker's answer has no protocol version.")?;
     if protocol != PROTOCOL_MAJOR {
         return Err(format!(
-            "rust-mirror {tool} speaks event protocol {protocol}; this GUI supports protocol {PROTOCOL_MAJOR}. \
-             Use a matching rust-mirror or GUI version."
+            "The worker speaks event protocol {protocol}; this window supports protocol {PROTOCOL_MAJOR}."
         ));
     }
-    Ok(BackendVersion { tool, protocol })
-}
-
-fn parse_semver(text: &str) -> Option<(u64, u64, u64)> {
-    let core = text.split(['-', '+']).next()?;
-    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
-    Some((parts.next()??, parts.next()??, parts.next()??))
+    let library = value
+        .get("library")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    Ok(BackendVersion {
+        tool,
+        library,
+        protocol,
+    })
 }
 
 #[cfg(test)]
@@ -255,13 +248,11 @@ mod tests {
 
     #[test]
     fn version_check() {
-        assert!(check_version(r#"{"tool":"0.2.0","protocol":1}"#).is_ok());
+        let v = check_version(r#"{"tool":"0.1.0","library":"0.1.1","protocol":1}"#).unwrap();
+        assert_eq!(v.library.as_deref(), Some("0.1.1"));
         assert!(check_version("rust-mirror 0.1.1\n")
             .unwrap_err()
-            .contains("0.2.0"));
-        assert!(check_version(r#"{"tool":"0.1.9","protocol":1}"#)
-            .unwrap_err()
-            .contains("too old"));
+            .contains("unreadable"));
         assert!(check_version(r#"{"tool":"0.3.0","protocol":2}"#)
             .unwrap_err()
             .contains("protocol 2"));
