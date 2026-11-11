@@ -1,0 +1,71 @@
+<h1>Sync &amp; finish <span class="hint" style="font-size:13px; font-weight:400">run-002 · started 14:02 · resumable</span></h1>
+<div class="sub">Downloads and verifies the frozen plan, assembles a raw generation, then adds Rustup installers to produce the generation you publish.</div>
+<div class="steps">
+  <div class="step done"><b>Verify previous</b>run-001 · 2.1 GiB</div>
+  <div class="step done"><b>Resolve</b>4 / 4 selections</div>
+  <div class="step now"><b>Fetch</b>selection 3 / 4 · mac-dev</div>
+  <div class="step"><b>Verify &amp; assemble</b>raw generation</div>
+  <div class="step"><b>Rustup finish</b>complete-002</div>
+</div>
+<div class="panel" style="margin-bottom:14px">
+  <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:8px">
+    <span style="font-size:22px; font-weight:700">2.31 GiB</span><span class="hint">of ≈ 3.40 GiB</span>
+    <span style="flex:1"></span>
+    <span>38.2 MiB/s</span><span class="hint">·</span><span>about 30 s left</span>
+  </div>
+  <div class="bar big"><i style="width:68%"></i></div>
+  <div style="display:flex; gap:22px; margin-top:8px" class="hint">
+    <span>Downloaded from upstream <b style="color:#1f2328">1.14 GiB</b></span>
+    <span>Reused locally <b style="color:#1f2328">1.17 GiB</b></span>
+    <span>Metadata requests <b style="color:#1f2328">11</b></span>
+    <span>Transfer attempts <b style="color:#1f2328">43</b> (1 restarted)</span>
+    <span style="flex:1"></span><span class="tag gap">Live counters need G1</span>
+  </div>
+</div>
+<div class="row">
+  <div class="col" style="flex:1">
+    <div class="panel">
+      <h3>Selections</h3>
+      <table>
+        <tr><th>Selection</th><th>Pinned</th><th style="width:40%">Progress</th><th class="right">Files</th><th>State</th></tr>
+        <tr><td>windows-dev</td><td class="mono">stable-2025-09-18</td><td><div class="bar green"><i style="width:100%"></i></div></td><td class="right">24 / 24</td><td class="ok">verified</td></tr>
+        <tr><td>linux-dev</td><td class="mono">1.90.0</td><td><div class="bar green"><i style="width:100%"></i></div></td><td class="right">26 / 26</td><td class="ok">verified</td></tr>
+        <tr class="sel"><td><b>mac-dev</b></td><td class="mono">1.90.0</td><td><div class="bar"><i style="width:47%"></i></div></td><td class="right">16 / 34</td><td>fetching</td></tr>
+        <tr><td>legacy-189</td><td class="mono">1.89.0</td><td><div class="bar"><i style="width:0%"></i></div></td><td class="right">0 / 12</td><td class="hint">waiting</td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Current files</h3>
+      <table>
+        <tr><th>Action</th><th>File</th><th style="width:28%">Progress</th><th class="right">Bytes</th></tr>
+        <tr><td><span class="tag" style="background:#ddf4ff;color:#0550ae">Download</span></td><td class="mono">rustc-1.90.0-aarch64-apple-darwin.tar.xz</td><td><div class="bar"><i style="width:62%"></i></div></td><td class="right">52.0 / 83.9 MiB</td></tr>
+        <tr><td><span class="tag" style="background:#fff8c5;color:#7d4e00">Resume</span></td><td class="mono">rust-docs-1.90.0-aarch64-apple-darwin.tar.gz</td><td><div class="bar"><i style="width:35%"></i></div></td><td class="right">from 6.1 MiB</td></tr>
+        <tr><td><span class="tag tested">Reuse</span></td><td class="mono">rust-src-1.90.0.tar.xz</td><td><div class="bar green"><i style="width:100%"></i></div></td><td class="right">hash verified</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col" style="width:470px">
+    <div class="panel" style="padding:10px">
+      <h3>Activity</h3>
+      <div class="log">
+<span class="t">14:02:01</span> <span class="b">stage</span> verify previous generation<br>
+<span class="t">14:02:09</span> <span class="b">stage</span> resolve 4/4: legacy-189 (1.89.0)<br>
+<span class="t">14:02:11</span> <span class="b">stage</span> fetch 1/4: windows-dev → stable-2025-09-18<br>
+<span class="t">14:02:11</span> <span class="g">Reuse</span> rustc-1.90.0-x86_64-pc-windows-msvc.tar.xz<br>
+<span class="t">14:02:40</span> <span class="g">Download</span> rust-std-1.90.0-wasm32-unknown-unknown.tar.xz<br>
+<span class="t">14:03:12</span> <span class="b">stage</span> fetch 2/4: linux-dev → 1.90.0<br>
+<span class="t">14:04:55</span> <span class="y">Restart</span> clippy-1.90.0-x86_64-unknown-linux-gnu.tar.gz<br>
+<span class="t">14:04:55</span> <span class="y">  server ignored range request; restarting file</span><br>
+<span class="t">14:05:30</span> <span class="b">stage</span> fetch 3/4: mac-dev → 1.90.0<br>
+<span class="t">14:05:31</span> <span class="y">Resume</span> rust-docs-…-aarch64-apple-darwin.tar.gz @ 6.1 MiB<br>
+<span class="t">14:05:31</span> <span class="g">Download</span> rustc-1.90.0-aarch64-apple-darwin.tar.xz
+      </div>
+      <div class="hint" style="margin-top:6px">Saved to <span class="mono">run-002\.sync\gui-log.txt</span> · Copy · Open folder</div>
+    </div>
+    <div class="panel">
+      <h3>Control</h3>
+      <div style="display:flex; gap:8px"><span class="btn" style="flex:1; text-align:center">Stop (keep progress) <span class="tag gap">G2</span></span><span class="btn dis">Open generation</span></div>
+      <div class="hint" style="margin-top:8px">Stopping keeps verified partial files. Resume later with the same configuration and previous generation; changing either starts a fresh run. “Start over” deletes this run’s progress and needs confirmation.</div>
+    </div>
+  </div>
+</div>

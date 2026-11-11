@@ -1,0 +1,60 @@
+<h1>Publish to Nexus</h1>
+<div class="sub">Upload a completed generation into a <b>fresh, empty</b> Nexus Raw hosted repository or prefix, then read every file back and check its hash.</div>
+<div class="row">
+  <div class="col" style="flex:1">
+    <div class="panel">
+      <h3>1 · Generation to publish</h3>
+      <div class="field"><label>Mirror folder</label><div class="input mono">E:\transfer\complete-002\mirror &nbsp;<span class="hint">Browse…</span></div></div>
+      <table>
+        <tr><td style="width:130px">Inventory</td><td>schema 3 · 412 files · 3.38 GiB · <span class="mono">snapshot.toml</span> sha256 <span class="mono">4be0…a91c</span></td></tr>
+        <tr><td>Toolchains</td><td><span class="chip">1.89.0</span><span class="chip">1.90.0</span><span class="chip">stable → 2025-09-18</span> · Rustup 1.28.2</td></tr>
+        <tr><td>Local check</td><td class="ok">✓ all files present and hashes match <span class="tag gap">G6</span></td></tr>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>2 · Destination</h3>
+      <div class="field"><label>Base URL</label><div class="input mono">https://nexus.example.local/repository/rust-generation-002</div></div>
+      <div class="field"><label></label><div class="hint">HTTPS only. No user name, query or fragment in the URL. Redirects are refused.</div></div>
+      <div class="field"><label>CA bundle</label><div class="input mono">E:\certs\company-ca.pem &nbsp;<span class="hint">Browse… · Clear (use system trust)</span></div></div>
+      <div class="field"><label>Username</label><div class="input">rust-publisher</div></div>
+      <div class="field"><label>Password</label><div class="input">●●●●●●●●●●●●</div></div>
+      <div class="field"><label></label><div class="hint">Kept in memory for this publish only. Never written to disk, logs or settings. TLS verification cannot be turned off.</div></div>
+    </div>
+    <div class="panel">
+      <h3>3 · Confirm</h3>
+      <div style="margin-bottom:6px"><span class="cb on"></span>The repository disallows redeploy and is not yet served to clients.</div>
+      <div><span class="cb"></span>I understand a failed upload can leave partial files. There is no rollback; I would use a new repository.</div>
+      <div style="display:flex; gap:8px; margin-top:12px; align-items:center">
+        <span class="btn">Run checks again</span><span style="flex:1"></span>
+        <span class="btn primary dis">Publish 412 files</span>
+      </div>
+    </div>
+  </div>
+  <div class="col" style="width:470px">
+    <div class="panel">
+      <h3>Pre-flight checks <span class="tag gap">G7</span></h3>
+      <ul class="check" style="padding-left:22px; margin:0">
+        <li><span class="i ok">✓</span>Generation is complete, not private working state</li>
+        <li><span class="i ok">✓</span>URL is HTTPS without credentials, query or fragment</li>
+        <li><span class="i ok">✓</span>TLS certificate trusted via company-ca.pem</li>
+        <li><span class="i ok">✓</span>Credentials accepted</li>
+        <li><span class="i ok">✓</span>412 / 412 destination paths are absent</li>
+        <li><span class="i warn">!</span>Redeploy policy can’t be read remotely — confirm it in Nexus</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Upload (shown after Publish starts)</h3>
+      <div class="bar big"><i style="width:0%"></i></div>
+      <div class="hint" style="margin-top:6px">Per file: upload → read back → hash check. <span class="mono">snapshot.toml</span> is uploaded last. <span class="tag gap">Progress needs G1/G7</span></div>
+    </div>
+    <div class="callout warn">
+      <b>Publishing does not switch clients.</b> After a successful verify, a Nexus administrator adds
+      <span class="mono">rust-generation-002</span> to the <span class="mono">rust-active</span> group. This app never activates, deletes or reconfigures Nexus.
+    </div>
+    <div class="panel">
+      <h3>Command equivalent</h3>
+      <div class="mono" style="word-break:break-all">rust-mirror publish --source E:\transfer\complete-002\mirror --base-url https://nexus.example.local/repository/rust-generation-002 --ca-file E:\certs\company-ca.pem</div>
+      <div class="hint" style="margin-top:4px">Credentials come from NEXUS_USERNAME / NEXUS_PASSWORD in the CLI.</div>
+    </div>
+  </div>
+</div>

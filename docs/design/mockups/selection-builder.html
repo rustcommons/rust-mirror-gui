@@ -1,0 +1,85 @@
+<h1>Selections</h1>
+<div class="sub">Choose which Rust toolchains, platforms and components the mirror contains. Saved as <span class="mono">mirror-002.toml</span>; the CLI reads the same file.</div>
+<div class="row" style="height:705px">
+  <div class="col" style="width:250px">
+    <div class="panel list" style="padding:8px">
+      <a>linux-dev<small>1.90.0 · 1 host · default</small></a>
+      <a class="on">windows-dev<small>stable → 1.90.0 · 1 host · default</small></a>
+      <a>mac-dev<small>1.90.0 · 2 hosts · default</small></a>
+      <a>legacy-189<small>1.89.0 · 1 host · minimal</small></a>
+      <div style="padding:8px 4px 2px; display:flex; gap:6px">
+        <span class="btn">+ Add</span><span class="btn">Duplicate</span><span class="btn">Remove</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Import</h3>
+      <span class="btn" style="width:100%">From rust-toolchain.toml…</span>
+      <div class="hint" style="margin-top:6px">Hosts and the Rustup version stay explicit, as in <span class="mono">import</span>.</div>
+    </div>
+    <div class="panel">
+      <h3>Mirror settings</h3>
+      <div class="field" style="grid-template-columns:90px 1fr"><label>Rustup</label><div class="input combo mono">1.28.2</div></div>
+      <div class="field" style="grid-template-columns:90px 1fr"><label>Budget</label><div class="input">10 GiB</div></div>
+      <div class="hint">Transfer budget, not a disk quota. 1 byte–100 GiB.</div>
+    </div>
+  </div>
+  <div class="col" style="flex:1">
+    <div class="panel">
+      <div class="row">
+        <div style="flex:1">
+          <div class="field"><label>Name</label><div class="input">windows-dev</div></div>
+          <div class="field"><label>Toolchain</label><div class="input combo mono">stable</div></div>
+          <div class="field"><label></label><div class="hint">Numeric (<span class="mono">1.90.0</span>), channel (<span class="mono">stable</span>) or dated channel (<span class="mono">stable-2025-09-18</span>). <span class="tag gap">Release list needs upstream API (G8)</span></div></div>
+        </div>
+        <div style="width:320px">
+          <div class="callout info" style="margin:0">
+            <b>Checked upstream metadata</b> just now<br>
+            <span class="mono">stable</span> currently resolves to <b>1.90.0</b> (2025-09-18). Sync freezes it; the plan records the pinned date.
+            <div style="margin-top:6px"><span class="btn">Check again</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="flex:1">
+      <div class="panel" style="width:360px">
+        <h3>Host platforms <span class="hint">(where the compiler runs)</span></h3>
+        <div style="margin-bottom:6px"><span class="cb"></span>Linux x86-64 (glibc) <span class="tag tested">tested</span><div class="hint mono" style="margin-left:22px">x86_64-unknown-linux-gnu</div></div>
+        <div style="margin-bottom:6px"><span class="cb on"></span>Windows x86-64 (MSVC) <span class="tag tested">tested</span><div class="hint mono" style="margin-left:22px">x86_64-pc-windows-msvc</div></div>
+        <div style="margin-bottom:6px"><span class="cb"></span>macOS Apple Silicon <span class="tag tested">tested</span><div class="hint mono" style="margin-left:22px">aarch64-apple-darwin</div></div>
+        <div style="margin-bottom:6px"><span class="cb"></span>macOS Intel <span class="tag tested">tested</span><div class="hint mono" style="margin-left:22px">x86_64-apple-darwin</div></div>
+        <div style="margin-bottom:10px"><span class="cb on"></span>Windows ARM64 (MSVC) <span class="tag untested">advertised, not qualified</span><div class="hint mono" style="margin-left:22px">aarch64-pc-windows-msvc</div></div>
+        <div class="hint">Show all 94 advertised hosts ▸</div>
+        <h3 style="margin-top:16px">Profile</h3>
+        <div><span class="radio"></span>minimal <span class="hint">rustc, cargo, rust-std</span></div>
+        <div style="margin-top:4px"><span class="radio on"></span>default <span class="hint">+ clippy, rustfmt, rust-docs</span></div>
+        <div class="hint" style="margin-top:6px"><span class="mono">complete</span> is not offered: upstream does not publish it reliably.</div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="panel" style="flex:1">
+          <h3>Extra components <span class="hint">for x86_64-pc-windows-msvc · from <span class="mono">catalog()</span></span></h3>
+          <table>
+            <tr><th style="width:30px"></th><th>Component</th><th>Aliases</th><th>Package version</th><th>Availability</th></tr>
+            <tr><td><span class="cb on dis"></span></td><td>clippy</td><td class="hint">clippy-preview</td><td class="mono">0.1.90</td><td class="ok">in profile</td></tr>
+            <tr><td><span class="cb on dis"></span></td><td>rustfmt</td><td class="hint">rustfmt-preview</td><td class="mono">1.8.0</td><td class="ok">in profile</td></tr>
+            <tr><td><span class="cb on"></span></td><td>rust-src</td><td></td><td class="mono">1.90.0</td><td class="ok">available</td></tr>
+            <tr><td><span class="cb on"></span></td><td>rust-analyzer</td><td class="hint">rust-analyzer-preview</td><td class="mono">0.20.0</td><td class="ok">available</td></tr>
+            <tr><td><span class="cb"></span></td><td>llvm-tools</td><td class="hint">llvm-tools-preview</td><td class="mono">1.90.0</td><td class="ok">available</td></tr>
+            <tr><td><span class="cb"></span></td><td>rustc-dev</td><td></td><td class="mono">1.90.0</td><td class="ok">available</td></tr>
+            <tr><td><span class="cb"></span></td><td>miri</td><td class="hint">miri-preview</td><td class="mono">0.1.0</td><td class="err">unavailable on stable</td></tr>
+          </table>
+        </div>
+        <div class="panel">
+          <h3>Extra compilation targets <span class="hint">(standard libraries for cross-compiling)</span></h3>
+          <span class="chip x mono">wasm32-unknown-unknown</span><span class="chip x mono">x86_64-unknown-linux-musl</span>
+          <div class="input" style="margin-top:6px; color:#8c959f">Search 97 targets…</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="display:flex; align-items:center; gap:12px">
+      <span class="ok">✓ Configuration valid</span><span class="hint">4 selections · 7 hosts · checked locally with <span class="mono">Config::validate</span></span>
+      <span class="warn">● Unsaved changes</span>
+      <span style="flex:1"></span>
+      <span class="btn">Show TOML</span><span class="btn">Save</span><span class="btn primary">Preview plan →</span>
+    </div>
+  </div>
+</div>
