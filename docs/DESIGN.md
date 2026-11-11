@@ -1,8 +1,31 @@
-# rust-mirror-gui design proposal
+# rust-mirror-gui design
 
-Status: **proposal, awaiting owner approval.** Nothing here is implemented. The
-framework choice in [Section 3](#3-gui-framework) needs explicit owner approval
-before any application code or dependency is added.
+Status: **approved direction, prototype in progress.**
+
+## Decisions (owner, 2026-11-11)
+
+- **Framework:** eframe/egui is approved. A prototype comes first, for the owner
+  to try. The spike checks S1–S3 (Section 3.3) follow, and the owner's own trial
+  counts as input to them.
+- **Architecture change:** the GUI and rust-mirror are loosely coupled. The GUI
+  does **not** link the rust-mirror library for operations. It runs the
+  rust-mirror program as a child process. The program reports over a JSON-lines
+  event protocol on stdout: protocol version, stage, artifact and byte events,
+  periodic heartbeats, and a final result with a typed error kind. The GUI must
+  always know what the backend is doing, including when the backend stops
+  responding. See [Section 3.4](#34-architecture).
+- rust-mirror 0.2.0 defines the protocol in its `docs/EVENTS.md`. Until that spec
+  is on rust-mirror's main branch, the GUI's client
+  ([`src/protocol.rs`](../src/protocol.rs)) is **provisional**. It is tested only
+  against a fake backend ([`src/bin/fake-rust-mirror.rs`](../src/bin/fake-rust-mirror.rs)).
+
+Sections 2 and 3.1–3.3 below are the original proposal (merged in PR #1) and are
+kept as written. Because of the architecture change, the gaps in Section 2.3 are
+now protocol requirements on the rust-mirror CLI, not library APIs: G1 events, G2
+cancel, G4 error kinds and G7 publish progress. The process boundary also covers
+G6 (inspect) and G11 (retention) as future commands.
+
+## Original proposal
 
 Prepared 2026-11-11 against rust-mirror **0.1.1**
 ([crates.io](https://crates.io/crates/rust-mirror/0.1.1),
@@ -182,24 +205,60 @@ stable 1.x API), provided the owner accepts the royalty-free license's attributi
 requirement. **If accessibility is ranked above air-gapped simplicity,** Tauri is
 the alternative, with the WebView2 offline runtime bundled on Windows.
 
-### 3.4 Architecture sketch (for approval, not implemented)
+### 3.4 Architecture
+
+Implemented in the prototype ([`src/job.rs`](../src/job.rs), [`src/app.rs`](../src/app.rs)):
 
 ```mermaid
 flowchart LR
-  UI["UI thread (eframe)"] -- "commands" --> W["Worker thread"]
-  W -- "events (G1) / result" --> UI
-  W -- "calls" --> L["rust-mirror library"]
-  L -- "HTTPS GET" --> U["static.rust-lang.org"]
-  L -- "PUT + GET verify" --> N["Nexus Raw (offline network)"]
-  UI -. "Stop (G2)" .-> W
+  UI["egui UI thread<br/>(never blocks)"] -- "start / Stop / end process" --> J["Job: child-process handle"]
+  J -- "spawn: rust-mirror CMD … --events jsonl" --> RM["rust-mirror process"]
+  RM -- "stdout: JSON lines<br/>hello, stage, artifact, bytes, heartbeat, result" --> R1["stdout reader thread"]
+  RM -- "stderr: human text" --> R2["stderr reader thread"]
+  R1 -- "parsed events" --> J
+  R2 -- "text lines" --> J
+  J -. "stdin: cancel line, then close" .-> RM
+  RM -- "HTTPS / PUT + GET" --> EXT["static.rust-lang.org / Nexus"]
 ```
 
-Arrows show calls and data flow at runtime. One long operation at a time, run on
-a worker thread. The UI holds no mirroring logic. Credentials live only in worker
-memory for one publish. TLS verification is never configurable. Each screen shows
-the equivalent CLI command so an admin can reproduce or script the step.
+Solid arrows show runtime data flow and the dotted arrow shows the stop request.
+The GUI never touches upstream or Nexus itself.
+
+- **Discovery:** on startup, and whenever the user changes the program path, the
+  GUI runs `rust-mirror --version --json` with a 10 s timeout. It refuses tools
+  without a JSON answer (for example 0.1.x), tools older than 0.2.0, and any
+  protocol major version other than 1. The reason is shown in plain words.
+- **Liveness:** each event resets a "last event" clock. The `hello` event may
+  state the heartbeat interval (default 2 s). With no event for 3× that interval
+  (minimum 5 s), the job is shown as **stalled**.
+- **Stop:** writes a cancel line to stdin, then closes stdin. While stopping, or
+  when stalled, the GUI offers "End process now", which terminates the process.
+  For sync, the user is told that verified progress is kept for Resume. For
+  publish, the user is told the server may hold partial files and must not be
+  activated.
+- **Results:** the outcome comes from the final `result` event. A process that
+  exits without one is reported as such. Unknown event types and unreadable lines
+  are counted and logged, never fatal.
+- **Credentials** (publish) go only into the child's environment
+  (`NEXUS_USERNAME`/`NEXUS_PASSWORD`), never into arguments, logs or settings.
+- **Config file:** the Selections page writes schema-1 TOML text. rust-mirror
+  validates it when it reads it.
 
 ## 4. Screens
+
+### Prototype (running app)
+
+These are real screenshots of `rust-mirror-gui`, captured 2026-11-11 on Linux
+(Xvfb with Mesa lavapipe software Vulkan). The backend in them is the scripted
+**fake** backend, not rust-mirror.
+
+![Sync running](screenshots/sync-running.png)
+![Stalled backend](screenshots/sync-stalled.png)
+![Process ended after Stop](screenshots/sync-ended.png)
+
+More: [backend check](screenshots/backend-check.png), [selections](screenshots/selections.png).
+
+### Mockups (original proposal)
 
 Static mockups. HTML sources and the render script are in
 [`design/mockups/`](design/mockups/); re-render with
@@ -251,9 +310,11 @@ in-progress runs or anything on Nexus.
 
 ## 5. Open decisions for the owner
 
-1. Approve **eframe/egui** subject to spike S1–S3, or choose another framework.
-2. Approve filing G1–G12 as rust-mirror issues, in the priority order above.
+1. ~~Approve eframe/egui~~: approved 2026-11-11.
+2. Protocol needs (G1, G2, G4, G7) are being handled by the rust-mirror 0.2.0
+   event protocol. File the remaining gaps when needed.
 3. Confirm the first release scope: Selections, Plan, Sync, Publish. Retention
    follows G11.
-4. Requirement ID prefix for this repository's future `docs/REQUIREMENTS.md`. The
+4. Confirm serde and serde_json as dependencies (needed to parse the protocol).
+5. Requirement ID prefix for this repository's future `docs/REQUIREMENTS.md`. The
    organization convention table does not list `rust-mirror-gui` yet.

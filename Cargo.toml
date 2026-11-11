@@ -1,0 +1,29 @@
+[package]
+name = "rust-mirror-gui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = "Desktop interface for the rust-mirror CLI (prototype)"
+repository = "https://github.com/rustcommons/rust-mirror-gui"
+publish = false
+default-run = "rust-mirror-gui"
+
+[[bin]]
+name = "rust-mirror-gui"
+path = "src/main.rs"
+
+# Test-only stand-in for the rust-mirror CLI. It emits the event protocol from
+# scripted scenarios and performs no network or mirroring work. Not shipped.
+[[bin]]
+name = "fake-rust-mirror"
+path = "src/bin/fake-rust-mirror.rs"
+test = false
+
+[dependencies]
+eframe = "0.37"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+strip = "debuginfo"
