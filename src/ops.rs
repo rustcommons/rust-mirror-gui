@@ -8,6 +8,10 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Plan,
+    CheckNetwork,
+    Releases,
+    NetworkEnv,
+    InspectCa,
     Discover,
     RetentionPreview,
     RetentionApply,
@@ -21,6 +25,128 @@ pub enum SyncMode {
     New,
     Resume,
     Force,
+}
+
+/// Environment variable carrying the (non-secret) proxy username to the worker,
+/// referenced by name through `--proxy-username-env`.
+pub const PROXY_USER_ENV: &str = "RUST_MIRROR_GUI_PROXY_USER";
+
+/// Add per-machine network settings to an upstream-facing command, using
+/// rust-mirror 0.3.0's CLI flags (docs/NETWORK.md). The password, if any, goes
+/// to the worker as the first stdin line (`--proxy-password-stdin`); it never
+/// appears in argv, environment, logs or settings.
+pub fn with_network(
+    mut spec: Spec,
+    net: &crate::settings::NetworkSettings,
+    password: &str,
+) -> Spec {
+    use crate::settings::ProxyMode;
+    let mut a: Vec<OsString> = Vec::new();
+    match net.mode {
+        ProxyMode::Direct => {}
+        ProxyMode::Environment => a.push("--proxy-from-env".into()),
+        ProxyMode::Manual => {
+            a.extend(["--proxy".into(), net.proxy_url.trim().into()]);
+            if !net.proxy_username.trim().is_empty() {
+                spec.env
+                    .push((PROXY_USER_ENV.into(), net.proxy_username.trim().into()));
+                a.extend(["--proxy-username-env".into(), PROXY_USER_ENV.into()]);
+            }
+            if !password.is_empty() {
+                a.push("--proxy-password-stdin".into());
+                spec.stdin_secret = Some(password.to_string());
+            }
+        }
+    }
+    let no_proxy = crate::config::split_list(&net.no_proxy).join(",");
+    if !no_proxy.is_empty() {
+        a.extend(["--no-proxy".into(), no_proxy.into()]);
+    }
+    if !net.extra_ca_file.trim().is_empty() {
+        a.extend(["--extra-ca-file".into(), net.extra_ca_file.trim().into()]);
+    }
+    if net.connect_timeout_seconds != 180 {
+        a.extend([
+            "--connect-timeout".into(),
+            net.connect_timeout_seconds.to_string().into(),
+        ]);
+    }
+    if net.read_timeout_seconds != 180 {
+        a.extend([
+            "--read-timeout".into(),
+            net.read_timeout_seconds.to_string().into(),
+        ]);
+    }
+    if let Some(cli) = spec.cli.as_mut().filter(|_| !a.is_empty()) {
+        let flags: Vec<String> = a.iter().map(|f| f.to_string_lossy().into_owned()).collect();
+        let flags = flags.join(" ");
+        *cli = match cli.split_once(" (once per selection)") {
+            Some((head, tail)) => format!("{head} {flags} (once per selection){tail}"),
+            None => format!("{cli} {flags}"),
+        };
+    }
+    spec.args.extend(a);
+    spec
+}
+
+/// `check-network`: ordered dns/connect/proxy_auth/tls/download diagnostics.
+pub fn check_network(
+    program: &str,
+    net: &crate::settings::NetworkSettings,
+    password: &str,
+) -> Spec {
+    with_network(
+        finish(
+            program,
+            "Connection test",
+            vec!["check-network".into()],
+            vec![],
+        ),
+        net,
+        password,
+    )
+}
+
+/// Release list from the per-machine cache; `refresh` fetches upstream first
+/// (falling back to the cache), otherwise it never touches the network.
+pub fn releases(
+    program: &str,
+    cache: &std::path::Path,
+    refresh: bool,
+    net: &crate::settings::NetworkSettings,
+    password: &str,
+) -> Spec {
+    let mut a: Vec<OsString> = vec!["releases".into(), "--cache".into(), cache.into()];
+    if refresh {
+        let spec = finish(program, "Refresh release list", a, vec![]);
+        return with_network(spec, net, password);
+    }
+    a.push("--offline".into());
+    finish(program, "Load release list", a, vec![])
+}
+
+/// Sanitized environment proxy detection (no credential values).
+pub fn network_env(program: &str) -> Spec {
+    let mut spec = finish(
+        program,
+        "Detect environment proxy",
+        vec!["network-env".into()],
+        vec![],
+    );
+    spec.cli = Some("(shown by rust-mirror check-network --proxy-from-env)".into());
+    spec
+}
+
+/// Certificate details of a PEM file. Diagnostic only; never changes trust.
+pub fn inspect_ca(program: &str, file: &str) -> Spec {
+    let mut spec = finish(
+        program,
+        "Read certificate",
+        vec!["inspect-ca".into(), "--file".into(), file.trim().into()],
+        vec![],
+    );
+    spec.cli = Some(format!("(certificate details of {})", file.trim()));
+    spec
 }
 
 /// The executable that runs operations: this program itself. Developers and
@@ -42,6 +168,7 @@ fn finish(program: &str, label: &str, mut args: Vec<OsString>, env: Vec<(String,
         env,
         label: label.into(),
         cli: None,
+        stdin_secret: None,
     }
 }
 
@@ -94,12 +221,16 @@ pub fn retention_apply(program: &str, plan_file: &std::path::Path) -> Spec {
     spec
 }
 
-pub fn plan(program: &str, config: &str) -> Spec {
-    let a: Vec<OsString> = vec!["plan-all".into(), "--config".into(), config.trim().into()];
+pub fn plan(program: &str, config: &str, estimate_sizes: bool) -> Spec {
+    let mut a: Vec<OsString> = vec!["plan-all".into(), "--config".into(), config.trim().into()];
+    if estimate_sizes {
+        a.push("--estimate-sizes".into());
+    }
     let mut spec = finish(program, "Plan preview", a, vec![]);
     spec.cli = Some(format!(
-        "rust-mirror plan --config {} --selection NAME --output NEW_PLAN_DIRECTORY (once per selection)",
-        config.trim()
+        "rust-mirror plan --config {} --selection NAME --output NEW_PLAN_DIRECTORY{} (once per selection)",
+        config.trim(),
+        if estimate_sizes { " --estimate-sizes" } else { "" }
     ));
     spec
 }
@@ -203,6 +334,9 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::RetentionApply, _) => {
             "Deletion stopped. Files removed before the stop stay removed and there is no rollback. Discover again and inspect the folder before retrying."
         }
+        (Op::CheckNetwork, _) => "See each step below for what failed and how to fix it.",
+        (Op::Releases, _) => "The release list could not be loaded. You can still type a toolchain such as 1.90.0.",
+        (Op::NetworkEnv, _) | (Op::InspectCa, _) => "Nothing was changed.",
         (Op::Plan, _) => "A preview only reads metadata and writes nothing. Check the message, then preview again.",
         (_, "cancelled") | (_, "killed") | (_, "no_result") => {
             "Downloaded and verified files are kept. To continue, choose “Resume” with the same configuration, output and previous mirror, then start again."
@@ -269,5 +403,68 @@ mod tests {
             "stable-2025-09-18, beta-2025-09-18",
         );
         assert_eq!(args(&s).iter().filter(|a| *a == "--promote").count(), 2);
+    }
+
+    #[test]
+    fn network_settings_become_flags_and_password_goes_to_stdin_only() {
+        use crate::settings::{NetworkSettings, ProxyMode};
+        let net = NetworkSettings {
+            mode: ProxyMode::Manual,
+            proxy_url: "http://proxy.corp.example:3128".into(),
+            proxy_username: "alice".into(),
+            no_proxy: "localhost, .corp.example".into(),
+            extra_ca_file: "C:/certs/root.pem".into(),
+            connect_timeout_seconds: 30,
+            read_timeout_seconds: 180,
+        };
+        let s = check_network("gui", &net, "s3cret!");
+        let a = args(&s);
+        assert!(!a.iter().any(|x| x.contains("s3cret")));
+        assert!(!s.env.iter().any(|(_, v)| v.contains("s3cret")));
+        assert!(!s.display().contains("s3cret"));
+        assert_eq!(s.stdin_secret.as_deref(), Some("s3cret!"));
+        for want in [
+            "--proxy",
+            "--proxy-password-stdin",
+            "--proxy-username-env",
+            "--no-proxy",
+            "--extra-ca-file",
+            "--connect-timeout",
+        ] {
+            assert!(a.iter().any(|x| x == want), "{want}");
+        }
+        assert!(!a.iter().any(|x| x == "--read-timeout"));
+        assert!(a.contains(&"localhost,.corp.example".to_string()));
+        assert_eq!(
+            s.env,
+            vec![(PROXY_USER_ENV.to_string(), "alice".to_string())]
+        );
+        let direct = check_network("gui", &NetworkSettings::default(), "ignored");
+        assert_eq!(args(&direct), ["--worker", "check-network"]);
+        assert!(direct.stdin_secret.is_none());
+        let env = check_network(
+            "gui",
+            &NetworkSettings {
+                mode: ProxyMode::Environment,
+                ..Default::default()
+            },
+            "x",
+        );
+        assert!(args(&env).contains(&"--proxy-from-env".to_string()) && env.stdin_secret.is_none());
+    }
+
+    #[test]
+    fn offline_release_list_has_no_network_flags() {
+        use crate::settings::{NetworkSettings, ProxyMode};
+        let net = NetworkSettings {
+            mode: ProxyMode::Manual,
+            proxy_url: "http://p:1".into(),
+            ..Default::default()
+        };
+        let offline = releases("gui", std::path::Path::new("/c"), false, &net, "pw");
+        assert!(args(&offline).contains(&"--offline".to_string()));
+        assert!(!args(&offline).contains(&"--proxy".to_string()) && offline.stdin_secret.is_none());
+        let refresh = releases("gui", std::path::Path::new("/c"), true, &net, "pw");
+        assert!(args(&refresh).contains(&"--proxy".to_string()) && refresh.stdin_secret.is_some());
     }
 }

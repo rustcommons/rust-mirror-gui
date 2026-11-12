@@ -39,6 +39,24 @@ G3 sizes, G5 run-state inspection (partly covered by `generations`), G8 release
 discovery, G9 config replacement, G10 proxy settings and G12 exact plan replay
 remain open.
 
+## 0.2.0: corporate network (owner-approved 2026-11-12)
+
+Built on rust-mirror 0.3.0's
+[network contract](https://github.com/rustcommons/rust-mirror/blob/main/docs/NETWORK.md).
+The window keeps per-machine network settings and passes them to the worker
+as rust-mirror's own network flags.
+- The proxy password goes over stdin only (`--proxy-password-stdin`).
+- rust-mirror CLI commands (check-network, releases, sync, rustup) run through
+  `cli::run_with_events`.
+- GUI-only commands build `NetworkOptions` from the same flags:
+  - `plan-all` with `measure_sizes`;
+  - `network-env` with `detect_environment`;
+  - `inspect-ca` with `inspect_ca_file`.
+- Certificate parsing and trust stay in rust-mirror. The GUI only displays
+  `subject`, `issuer`, `not_after` and `sha256`, and never trusts anything
+  without the user choosing the file and confirming.
+- Sync progress uses protocol 1's additive `transfer_summary` event.
+
 ## Original proposal
 
 Prepared 2026-11-11 against rust-mirror **0.1.1**

@@ -53,6 +53,15 @@ fn main() {
         return;
     }
     let command = args.first().cloned().unwrap_or_default();
+    let has = |flag: &str| args.iter().any(|a| a == flag);
+    // `--proxy-password-stdin`: consume one line first, as rust-mirror does.
+    // Only its presence is reported; the value is never printed.
+    let mut password_received = false;
+    if has("--proxy-password-stdin") {
+        let mut line = String::new();
+        password_received =
+            std::io::stdin().lock().read_line(&mut line).is_ok() && !line.trim().is_empty();
+    }
 
     let cancel = Arc::new(AtomicBool::new(false));
     if scenario != "ignore-cancel" {
@@ -92,6 +101,22 @@ fn main() {
     eprintln!(
         "fake-rust-mirror: simulating `{command}` (scenario {scenario}); no files are written"
     );
+    if let Some((ok, body)) = network_command(&command, &args, password_received, step) {
+        alive.store(false, Ordering::SeqCst);
+        if ok {
+            emit(&format!(
+                r#"{{"type":"result","ok":true,"report":{body},"error":null}}"#
+            ));
+            std::process::exit(0);
+        }
+        emit(&format!(
+            r#"{{"type":"result","ok":false,"report":null,"error":{body}}}"#
+        ));
+        std::process::exit(1);
+    }
+    let estimate = has("--estimate-sizes");
+    let total_expected: u64 = 87_000_000 + 9_800_000 + 21_000_000 + 13_500_000;
+    let mut completed: u64 = 0;
 
     let stages: &[&str] = match command.as_str() {
         "publish" => &[
@@ -177,6 +202,14 @@ fn main() {
                         r#"{{"type":"bytes","path":"{path}","count":{},"total":{size}}}"#,
                         size * c / chunks
                     ));
+                    completed += size / chunks;
+                    if estimate {
+                        let rate = 25_000_000.0f64;
+                        let eta = (total_expected.saturating_sub(completed)) as f64 / rate;
+                        emit(&format!(
+                            r#"{{"type":"transfer_summary","completed_bytes":{completed},"transferred_bytes":{completed},"expected_bytes":{total_expected},"bytes_per_second":{rate},"eta_seconds":{eta:.1},"estimated":true}}"#
+                        ));
+                    }
                     if scenario == "fail" && path.contains("rust-std") && c == 5 {
                         finish(
                             false,
@@ -212,4 +245,81 @@ fn main() {
         std::thread::sleep(step * 3);
     }
     finish(true, "", "");
+}
+
+/// Scripted rust-mirror 0.3.0 network operations (`FAKE_NET`: ok, tls, proxy_auth, dns).
+/// Returns (ok, report-or-error JSON). Shapes follow rust-mirror docs/NETWORK.md.
+fn network_command(
+    command: &str,
+    args: &[String],
+    password: bool,
+    step: Duration,
+) -> Option<(bool, String)> {
+    let net = std::env::var("FAKE_NET").unwrap_or_else(|_| "ok".into());
+    let proxy = args
+        .iter()
+        .any(|a| a == "--proxy" || a == "--proxy-from-env");
+    match command {
+        "network-env" => Some((true, r#"{"proxy_url":"http://proxy.corp.example:3128","no_proxy":["localhost",".corp.example"],"credentials_present":false}"#.into())),
+        "inspect-ca" => Some((true, r#"{"certificates":[{"subject":"CN=Example Corp Inspection Root CA, O=Example Corp","issuer":"CN=Example Corp Inspection Root CA, O=Example Corp","not_after":"2031-06-30T23:59:59Z","sha256":"3f1c9a0b5e7d2c48a9e0b1f6c3d2e4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b"}]}"#.into())),
+        "releases" => {
+            emit(r#"{"type":"stage","name":"releases","index":1,"total":1}"#);
+            std::thread::sleep(step);
+            let offline = args.iter().any(|a| a == "--offline");
+            Some((true, format!(
+                r#"{{"releases":[{{"channel":"stable","toolchain":"1.91.1","date":"2025-11-10"}},{{"channel":"stable","toolchain":"1.91.0","date":"2025-10-30"}},{{"channel":"stable","toolchain":"1.90.0","date":"2025-09-18"}},{{"channel":"beta","toolchain":"beta-2025-11-08","date":"2025-11-08"}},{{"channel":"nightly","toolchain":"nightly-2025-11-10","date":"2025-11-10"}}],"source_url":"https://static.rust-lang.org/manifests.txt","cached":{offline},"fetched_at":1762761600,"index_sha256":"00","age_seconds":{}}}"#,
+                if offline { 7200 } else { 0 }
+            )))
+        }
+        "check-network" => {
+            let names = ["dns", "connect", "proxy_auth", "tls", "download"];
+            let fail_at = match net.as_str() {
+                "dns" => Some(0),
+                "proxy_auth" if proxy => Some(2),
+                "tls" => Some(3),
+                _ => None,
+            };
+            let mut steps = Vec::new();
+            for (i, name) in names.iter().enumerate() {
+                emit(&format!(r#"{{"type":"stage","name":"check {name}","index":{},"total":5}}"#, i + 1));
+                std::thread::sleep(step);
+                let (status, kind, msg, certs) = match fail_at {
+                    Some(f) if i == f => match *name {
+                        "dns" => ("failed", "\"network\"", "could not resolve static.rust-lang.org".to_string(), "[]"),
+                        "proxy_auth" => ("failed", "\"auth\"", format!("the proxy answered 407 Proxy Authentication Required (password supplied: {password})"), "[]"),
+                        _ => ("failed", "\"tls\"", "the certificate presented for static.rust-lang.org is not trusted (unknown issuer)".to_string(),
+                              r#"[{"subject":"CN=static.rust-lang.org","issuer":"CN=Example Corp Inspection Root CA, O=Example Corp","not_after":"2026-12-01T00:00:00Z","sha256":"9a8b7c6d5e4f30211203f4e5d6c7b8a9901a2b3c4d5e6f708192a3b4c5d6e7f8"}]"#),
+                    },
+                    Some(f) if i > f => ("skipped", "null", "not run because an earlier step failed".to_string(), "[]"),
+                    _ if *name == "proxy_auth" && !proxy => ("skipped", "null", "direct connection: no proxy".to_string(), "[]"),
+                    _ => ("passed", "null", match *name {
+                        "dns" => "static.rust-lang.org resolved".to_string(),
+                        "connect" => if proxy { "connected through the proxy".to_string() } else { "connected directly".to_string() },
+                        "proxy_auth" => "the proxy accepted the connection".to_string(),
+                        "tls" => "certificate trusted".to_string(),
+                        _ => "downloaded dist/channel-rust-stable.toml.sha256".to_string(),
+                    }, "[]"),
+                };
+                steps.push(format!(r#"{{"name":"{name}","status":"{status}","error_kind":{kind},"message":"{msg}","certificates":{certs}}}"#));
+            }
+            let report = format!(r#"{{"ok":{},"steps":[{}]}}"#, fail_at.is_none(), steps.join(","));
+            if fail_at.is_none() {
+                Some((true, report))
+            } else {
+                let kind = match net.as_str() { "dns" => "network", "proxy_auth" => "auth", _ => "tls" };
+                Some((false, format!(r#"{{"kind":"{kind}","message":"network check failed","report":{report}}}"#)))
+            }
+        }
+        "plan-all" => {
+            emit(r#"{"type":"stage","name":"resolve windows-dev","index":1,"total":1}"#);
+            std::thread::sleep(step);
+            let sizes = if args.iter().any(|a| a == "--estimate-sizes") {
+                r#","sizes":{"artifacts":[{"path":"dist/2025-09-18/rustc-1.90.0-x86_64-pc-windows-msvc.tar.xz","expected_bytes":87000000},{"path":"dist/2025-09-18/cargo-1.90.0-x86_64-pc-windows-msvc.tar.xz","expected_bytes":9800000},{"path":"rustup/archive/1.28.2/x86_64-pc-windows-msvc/rustup-init.exe","expected_bytes":null}],"known_bytes":96800000,"unknown_artifacts":1,"complete":false,"exceeds_budget":false,"estimated":true}"#
+            } else { "" };
+            Some((true, format!(
+                r#"{{"plans":[{{"selection":{{"name":"windows-dev","toolchain":"1.90.0"}},"pinned_toolchain":"1.90.0","resolved_release":"1.90.0","date":"2025-09-18","max_download_bytes":10737418240,"artifacts":[{{"path":"dist/2025-09-18/rustc-1.90.0-x86_64-pc-windows-msvc.tar.xz","sha256":"a18b3912905f","package":"rustc","target":"x86_64-pc-windows-msvc","kind":"component"}},{{"path":"dist/2025-09-18/cargo-1.90.0-x86_64-pc-windows-msvc.tar.xz","sha256":"a238d6a87cb0","package":"cargo","target":"x86_64-pc-windows-msvc","kind":"component"}},{{"path":"rustup/archive/1.28.2/x86_64-pc-windows-msvc/rustup-init.exe","sha256":"88d8258dcf6a","package":"rustup-init","target":"x86_64-pc-windows-msvc","kind":"bootstrap"}}]{sizes}}}]}}"#
+            )))
+        }
+        _ => None,
+    }
 }

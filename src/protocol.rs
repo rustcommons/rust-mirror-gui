@@ -72,6 +72,23 @@ pub struct Hashing {
     pub total: Option<u64>,
 }
 
+/// rust-mirror 0.3.0 aggregate transfer estimate (EVENTS.md "planned 0.3.0
+/// additive network operations"). Every total/rate/ETA is an estimate.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct TransferSummary {
+    /// Logical coverage, including resumed prefixes.
+    pub completed_bytes: u64,
+    /// Newly received bytes in this invocation (no reuse/copy/hash).
+    #[serde(default)]
+    pub transferred_bytes: u64,
+    #[serde(default)]
+    pub expected_bytes: Option<u64>,
+    #[serde(default)]
+    pub bytes_per_second: Option<f64>,
+    #[serde(default)]
+    pub eta_seconds: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Heartbeat {
     #[serde(default)]
@@ -98,6 +115,9 @@ pub struct Log {
 pub struct ErrorInfo {
     pub kind: String,
     pub message: String,
+    /// Optional partial evidence (e.g. a failed check-network report).
+    #[serde(default)]
+    pub report: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -117,6 +137,7 @@ pub enum Event {
     Artifact(Artifact),
     Bytes(Bytes),
     Hashing(Hashing),
+    TransferSummary(TransferSummary),
     Heartbeat(Heartbeat),
     Log(Log),
     Result(Outcome),
@@ -155,6 +176,7 @@ impl Event {
             "artifact" => typed(value).map(Event::Artifact),
             "bytes" => typed(value).map(Event::Bytes),
             "hashing" => typed(value).map(Event::Hashing),
+            "transfer_summary" => typed(value).map(Event::TransferSummary),
             "heartbeat" => typed(value).map(Event::Heartbeat),
             "log" => typed(value).map(Event::Log),
             "result" => typed(value).map(Event::Result),
@@ -293,5 +315,23 @@ mod tests {
         let p2 = r#"{"type":"result","ok":true,"report":{"tool_version":"9.0.0","protocol":2}}"#;
         assert!(check_version(p2).unwrap_err().contains("protocol 2"));
         assert!(check_version("").unwrap_err().contains("no version"));
+    }
+
+    #[test]
+    fn parses_030_transfer_summary_and_error_report() {
+        match Event::parse(
+            r#"{"type":"transfer_summary","seq":9,"completed_bytes":10,"transferred_bytes":8,"expected_bytes":null,"bytes_per_second":null,"eta_seconds":null,"estimated":true}"#,
+        ) {
+            Event::TransferSummary(t) => {
+                assert!(t.expected_bytes.is_none() && t.completed_bytes == 10)
+            }
+            other => panic!("{other:?}"),
+        }
+        match Event::parse(
+            r#"{"type":"result","ok":false,"report":null,"error":{"kind":"tls","message":"m","report":{"ok":false,"steps":[]}}}"#,
+        ) {
+            Event::Result(o) => assert!(o.error.unwrap().report.is_some()),
+            other => panic!("{other:?}"),
+        }
     }
 }

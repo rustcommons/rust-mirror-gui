@@ -20,6 +20,11 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   I/O. Always show the live stage and time since the last event. Flag a stalled
   worker when heartbeats stop. Stop asks the worker to stop safely, and only then
   offers ending the process. Tell the user what is kept for Resume.
+- Network settings (0.2.0+) are per machine, in the app's config dir, never in
+  the shared mirror configuration. The proxy password is never saved to disk,
+  never put in argv, env or logs; the worker receives it as the first stdin
+  line (`--proxy-password-stdin`). Never auto-trust a certificate: the user
+  picks the PEM and confirms after seeing its details.
 - Do not invent protocol fields that conflict with rust-mirror's spec. Coordinate
   protocol needs with the rust-mirror maintainers.
 - The worker uses rust-mirror's published event API: `cli::run_with_events` for

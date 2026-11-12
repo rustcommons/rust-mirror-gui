@@ -205,3 +205,112 @@ fn built_in_worker_reports_library_errors_as_results() {
     }
     assert!(!dir.join("out").exists());
 }
+
+#[cfg(feature = "fake-backend")]
+fn net_spec(
+    net: &str,
+    settings: &rust_mirror_gui::settings::NetworkSettings,
+    password: &str,
+) -> Spec {
+    let mut s = ops::check_network(&fake().to_string_lossy(), settings, password);
+    s.env.push(("FAKE_NET".into(), net.into()));
+    s.env.push(("FAKE_STEP_MS".into(), "5".into()));
+    s
+}
+
+#[cfg(feature = "fake-backend")]
+#[test]
+fn connection_test_failure_carries_steps_and_presented_certificate() {
+    let settings = rust_mirror_gui::settings::NetworkSettings::default();
+    let mut job = Job::start(net_spec("tls", &settings, ""), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    let outcome = job.progress.result.clone().unwrap();
+    let err = outcome.error.unwrap();
+    assert_eq!(err.kind, "tls");
+    let steps = err.report.unwrap()["steps"].as_array().unwrap().clone();
+    let tls = steps.iter().find(|s| s["name"] == "tls").unwrap();
+    assert_eq!(tls["status"], "failed");
+    assert!(tls["certificates"][0]["issuer"]
+        .as_str()
+        .unwrap()
+        .contains("Example Corp"));
+    assert_eq!(
+        steps.iter().find(|s| s["name"] == "download").unwrap()["status"],
+        "skipped"
+    );
+}
+
+#[cfg(feature = "fake-backend")]
+#[test]
+fn proxy_password_reaches_worker_over_stdin_and_cancel_still_works() {
+    use rust_mirror_gui::settings::{NetworkSettings, ProxyMode};
+    let settings = NetworkSettings {
+        mode: ProxyMode::Manual,
+        proxy_url: "http://proxy:3128".into(),
+        ..Default::default()
+    };
+    let spec = net_spec("proxy_auth", &settings, "pw-123");
+    assert!(!spec
+        .args
+        .iter()
+        .any(|a| a.to_string_lossy().contains("pw-123")));
+    let mut job = Job::start(spec, || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    let report = job
+        .progress
+        .result
+        .clone()
+        .unwrap()
+        .error
+        .unwrap()
+        .report
+        .unwrap();
+    let auth = report["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "proxy_auth")
+        .unwrap()
+        .clone();
+    assert!(auth["message"]
+        .as_str()
+        .unwrap()
+        .contains("password supplied: true"));
+    assert!(!job.log.iter().any(|l| l.text.contains("pw-123")));
+}
+
+#[test]
+fn built_in_worker_reads_certificate_details_offline() {
+    // Public test certificate only (no key). Diagnostic; nothing is trusted.
+    let pem = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/test-ca.pem");
+    let mut job = Job::start(ops::inspect_ca(&gui_exe().to_string_lossy(), pem), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert_eq!(job.health(), Health::Succeeded);
+    let report = job.progress.result.clone().unwrap().report.unwrap();
+    let cert = &report["certificates"][0];
+    assert_eq!(cert["subject"], "CN=Test CA");
+    assert_eq!(cert["sha256"].as_str().unwrap().len(), 64);
+}
+
+#[test]
+fn built_in_worker_requires_both_proxy_username_and_password() {
+    use rust_mirror_gui::settings::{NetworkSettings, ProxyMode};
+    let net = NetworkSettings {
+        mode: ProxyMode::Manual,
+        proxy_url: "http://127.0.0.1:9".into(),
+        proxy_username: "alice".into(),
+        ..Default::default()
+    };
+    let spec = ops::with_network(
+        ops::plan(&gui_exe().to_string_lossy(), "missing.toml", false),
+        &net,
+        "",
+    );
+    let mut job = Job::start(spec, || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert!(
+        matches!(job.health(), Health::Failed { .. }),
+        "{:?}",
+        job.health()
+    );
+}
