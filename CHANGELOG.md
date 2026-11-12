@@ -2,10 +2,40 @@
 
 ## [Unreleased]
 
-- Documentation: add a step-by-step [tutorial](docs/TUTORIAL.md) with screenshots
-  from the 0.1.0 app, linked from the README (GitHub only; no new release).
-- Documentation: add the 0.1.0 [publication record](docs/evals/2026-11-12-v0.1.0-publication.md)
-  (registry archive, docs.rs, fresh install, tag and GitHub Release verification).
+No changes yet.
+
+## [0.2.0] - 2026-11-12
+
+Works on a corporate network. Requires rust-mirror 0.3.0 (built in). See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.2.0.md).
+
+- **Network settings page** (per computer, never in the mirror configuration):
+  - modes: direct, proxy from environment (the detected value is shown first),
+    or manual proxy URL with an optional Basic login;
+  - a NO_PROXY list;
+  - an extra company CA file, added to the built-in roots, with its subject,
+    issuer, expiry and SHA-256 fingerprint;
+  - connect and read timeouts.
+  - The proxy password is kept in memory only and handed to the worker over
+    stdin. It never appears in argv, environment, logs or settings.
+- **Test connection:** shows each step (DNS, connect, proxy login, TLS,
+  download) as passed, failed or skipped, with a plain-English fix. When HTTPS
+  inspection is detected, it shows "Certificate issued by <issuer>" from the
+  presented chain and offers an explicit add-a-company-certificate flow: the
+  user picks the PEM; nothing is trusted automatically.
+- **Plan preview:** optional download-size estimates (HEAD requests), with a
+  size column and an "about X of Y budget" bar.
+- **Sync:** optional size estimates, with percent, speed and time left.
+- **Selections:** a toolchain picker from rust-mirror's release list (stable
+  versions with dates, recent beta and nightly builds). It loads from a local
+  cache when offline, has a Refresh button, and still accepts free text.
+- **Fix:** the first-run release-list load no longer reports a failure when
+  there is no cache yet.
+- **Documentation:**
+  - the tutorial gains a Corporate network section with screenshots from the
+    real app;
+  - the README is updated;
+  - the 0.1.0 publication record and tutorial were added after 0.1.0.
 
 ## [0.1.0] - 2026-11-12
 

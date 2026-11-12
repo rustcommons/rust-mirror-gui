@@ -15,9 +15,12 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.1.0, first release.** It works for the flows listed below. Remote
-Desktop, screen readers and Windows/macOS runtime behavior are not yet verified;
-see [known limits](docs/releases/v0.1.0.md#validation-and-limits).
+**Status: 0.2.0, works on a corporate network.** It adds proxy settings
+(environment or manual, with login), company certificates for HTTPS inspection,
+a connection test, download-size estimates with percent and time left, and a
+release picker. Remote Desktop, screen readers and Windows/macOS runtime
+behavior are not yet verified; see
+[known limits](docs/releases/v0.2.0.md#validation-and-limits).
 
 ## Install
 
@@ -38,9 +41,13 @@ minimal or GPU-less Debian/Ubuntu machine, install:
 sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
 ```
 
+**Company proxy or HTTPS inspection?** Open **Network settings** in the app
+and press **Test connection** first. See the tutorial's
+[corporate network section](docs/TUTORIAL.md#11-corporate-network-proxy-company-certificate-sizes-and-release-list).
+
 ## 60-second demo
 
-This uses a new, empty folder and downloads about 330 MB from
+This uses a new, empty folder and downloads about 300 MB from
 `static.rust-lang.org`. It never touches your Rustup or Cargo installation.
 
 1. **Selections:**
@@ -58,21 +65,28 @@ writes to a server: use only a fresh, empty test repository.
 ## What it does and doesn't do
 
 - **Pages:**
-  - Selections: writes a new configuration file. It can't edit an existing one yet.
-  - Plan preview.
-  - Sync, with resume or start over.
+  - Network settings: direct, proxy from environment, or manual proxy with
+    login; NO_PROXY; an extra company CA; timeouts; Test connection. Saved per
+    computer; the proxy password is never saved.
+  - Selections: writes a new configuration file, with a toolchain picker from
+    the cached release list. It can't edit an existing file yet.
+  - Plan preview, with optional download-size estimates against your budget.
+  - Sync, with resume or start over, and percent and time left when sizes are
+    measured.
   - Rustup finish.
   - Generations and retention: list, preview, then delete only after you type a
     confirmation.
   - Publish, with a no-write destination check first.
-- **Planned:** loading existing configurations and download sizes in the preview.
+- **Not supported:** SOCKS proxies, and proxy logins other than Basic (for
+  example NTLM or Kerberos).
+- **Planned:** loading existing configurations.
 - **Never** activates Nexus groups, deletes remote data or changes clients.
   Credentials are passed only to the worker process and never saved.
 
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

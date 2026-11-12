@@ -8,7 +8,7 @@ to install. Each operation runs in a separate hidden copy of the program (a
 "worker"). If an operation hangs or crashes, the window stays usable and can end
 it.
 
-The built-in engine is rust-mirror 0.2.0. You can also install the app with
+The built-in engine is rust-mirror 0.3.0. You can also install the app with
 `cargo install rust-mirror-gui --locked` (Rust 1.95+) instead of using the CI build.
 
 ## 1. Download and start
@@ -22,7 +22,7 @@ The built-in engine is rust-mirror 0.2.0. You can also install the app with
 Nothing is installed and no Rust toolchain is needed. The app remembers form
 values (never passwords) in `%APPDATA%\rust-mirror-gui\settings.json`.
 
-The top bar should show **"✔ rust-mirror 0.2.0 built in · event protocol 1"**.
+The top bar should show **"✔ rust-mirror 0.3.0 built in · event protocol 1"**.
 If it shows a red message instead, open **About the engine**. Security software
 may be blocking the program from starting its own worker copy.
 

@@ -1,8 +1,12 @@
-# rust-mirror-gui tutorial (version 0.1.0)
+# rust-mirror-gui tutorial (version 0.2.0)
 
 This tutorial teaches you to build an offline Rust toolchain mirror with
-rust-mirror-gui and publish it to Nexus. It describes only what version 0.1.0
+rust-mirror-gui and publish it to Nexus. It describes only what version 0.2.0
 does.
+
+**Behind a company proxy, or seeing certificate errors?** Do
+[section 11, Corporate network](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)
+first.
 
 > **Quick start**
 >
@@ -14,10 +18,15 @@ does.
 > 6. **Start Rustup finish** with output `demo/complete-001`. Copy `complete-001/mirror` to the offline network.
 > 7. **Publish:** **Check destination (no writes)** first, then **Publish** into a new, empty Nexus Raw repository.
 > 8. Every page shows the matching `rust-mirror` command under **Same as**.
+> 9. Company proxy? Use **Network settings**, then **Test connection** first ([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
 
-The screenshots come from rust-mirror-gui 0.1.0 on Linux, so the paths look like
-`/tmp/tut/demo`. On Windows you would use paths such as `C:\rm-demo`, and fonts
-and window borders look slightly different.
+The screenshots come from Linux, so the paths look like `/tmp/tut/demo`. On
+Windows you would use paths such as `C:\rm-demo`, and fonts and window borders
+look slightly different.
+- Sections 2–7 were captured with 0.1.0. In 0.2.0 the left menu also has
+  **Network settings**, Selections has a release picker, and Plan preview and
+  Sync have a **Measure download sizes** option. Everything else is the same.
+- Section 11 was captured with 0.2.0.
 
 ## Contents
 
@@ -31,6 +40,7 @@ and window borders look slightly different.
 8. [Move the mirror offline and point clients at it](#8-move-the-mirror-offline-and-point-clients-at-it)
 9. [Troubleshooting](#9-troubleshooting)
 10. ["Same as": the matching command-line commands](#10-same-as-the-matching-command-line-commands)
+11. [Corporate network: proxy, company certificate, sizes and release list](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)
 
 ## 1. Install and launch
 
@@ -58,7 +68,7 @@ rust-mirror-gui
   `~/.config/rust-mirror-gui/settings.json` on Linux.
 
 When the app starts, the top bar should say
-**"✔ rust-mirror 0.2.0 built in · event protocol 1"**. If it shows a red message,
+**"✔ rust-mirror 0.3.0 built in · event protocol 1"**. If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes
@@ -109,9 +119,11 @@ Press **Preview plan**.
   checks every download against it.
 - **"Transferred … KiB"** in the status below is only the small metadata files
   the preview read. Nothing large is downloaded and nothing is written.
-- The blue note is a real 0.1.0 limit: **download sizes aren't shown before the
-  sync**. Also, the sync looks up metadata again, so a moving channel such as
-  `stable` could change between preview and sync.
+- Download sizes aren't in the upstream metadata. Tick **Measure download
+  sizes** to ask the server for estimates first
+  ([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
+  The sync also looks up metadata again, so a moving channel such as `stable`
+  could change between preview and sync.
 
 ## 4. Sync: reading the live status, Stop and Resume
 
@@ -320,7 +332,17 @@ since the interrupted run. Put them back, or use **Start over**.
 **"Failed [locked]".** Another rust-mirror process is using that output folder.
 Wait for it to finish.
 
-**"Failed [network]".** Check the connection, then **Resume**.
+**"Failed [network]".** Check the connection, then **Resume**. Behind a
+company proxy, set it up in **Network settings** and use **Test connection**
+([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
+
+**Downloads fail with "TLS" or a certificate error.** Your company probably
+inspects HTTPS. Run **Test connection**; it names the certificate's issuer and
+lets you add the company certificate (section 11).
+
+**"Failed [auth]" during a download (not publish).** The proxy refused the
+login. Enter the proxy username and password in **Network settings**. The
+password is asked for again after each restart, because it is never saved.
 
 **Publish: "Failed [tls]".** The server certificate isn't trusted. Choose your
 company CA bundle (a PEM file) in **CA bundle**. TLS checking cannot be turned
@@ -356,7 +378,110 @@ rust-mirror publish --preflight --source E:\transfer\complete-001\mirror --base-
     `[retention]` section of the configuration file. The app passes the policy
     directly instead.
 
+## 11. Corporate network: proxy, company certificate, sizes and release list
+
+*New in 0.2.0.* Use this when your company sends internet traffic through a
+proxy, or when HTTPS is inspected with a company certificate. These settings
+apply only to downloads from `static.rust-lang.org`: plan preview, sync, Rustup
+finish and the release list. Publishing keeps its own settings (section 7).
+
+### Network settings
+
+Open **Network settings** (top of the left menu) and choose one:
+
+- **Direct (no proxy):** the default.
+- **Proxy from environment:** uses `HTTPS_PROXY` (or `ALL_PROXY`) and `NO_PROXY`.
+  Press **Show detected proxy** to see what will be used. A login in the
+  variable is reported as "yes (not shown)"; its value is never displayed.
+- **Manual proxy:**
+  - **Proxy URL:** for example `http://proxy.example.com:8080`. Don't put
+    `user:password@` in the URL.
+  - **Proxy username** and **Proxy password:** optional.
+  - **No proxy for:** hosts or domains that skip the proxy, for example
+    `localhost, .corp.example.com`.
+- **Extra CA file (PEM):** your company's root certificate. It is **added** to
+  the built-in trusted roots and never replaces them. **Show certificate
+  details** shows its subject, issuer, expiry date and SHA-256 fingerprint.
+- **Timeouts:** connect and read timeouts, in seconds.
+
+These settings are stored **for this computer only** in the app's settings
+folder, never in the shared mirror configuration.
+
+**The password is never saved.** It stays in memory for this session and is
+handed to the worker privately. It does not appear in **Same as**, logs or
+settings files. Basic proxy logins travel to the proxy without encryption, so
+use this only with your company's own proxy.
+
+### Test connection
+
+Press **Test connection**. Each step shows **passed**, **failed** or
+**skipped**:
+
+| Step | What it checks | If it fails |
+| --- | --- | --- |
+| Find server (DNS) | The computer can look up static.rust-lang.org | Choose a proxy mode, or ask IT about name resolution |
+| Connect | A connection opens, directly or through the proxy | Check the proxy address and port |
+| Proxy login | The proxy accepts the login (skipped when direct) | Enter the proxy username and password |
+| Secure connection (TLS) | The server's certificate is trusted | Usually HTTPS inspection: add the company certificate (below) |
+| Test download | A small official file downloads | Ask IT whether the proxy blocks the download |
+
+When the secure-connection step fails because your company inspects HTTPS, the
+app shows **"Certificate issued by <issuer>"** with the name taken from the
+certificate the server actually presented:
+
+![Connection test: TLS inspection detected, certificate issued by CN=Test CA](screenshots/network-1-tls-inspection.png)
+
+To add the company certificate:
+1. Ask IT for the root certificate as a **PEM file**.
+2. Press **Add this company certificate…** and enter the file path.
+3. Press **Show details**. Compare the **SHA-256** fingerprint with what IT
+   gives you.
+4. Only then press **Use this certificate**.
+
+Nothing is trusted automatically, and the app never downloads a certificate.
+
+![Adding a company certificate: details and fingerprint shown before use](screenshots/network-2-add-certificate.png)
+
+Press **Test connection** again. All five steps should pass:
+
+![All connection steps passed through the company proxy](screenshots/network-3-connection-ok.png)
+
+### Picking a toolchain from the release list
+
+In **1 Selections**, next to **Toolchain**:
+- **Pick from release list** lists all stable versions with their dates, plus
+  recent beta and nightly builds.
+- **Refresh** downloads the current list using your network settings. The app
+  keeps a copy, so the list also works later without a network. The line below
+  says how old the list is.
+- You can still type any toolchain, for example `1.90.0` or `nightly-2025-01-15`.
+
+![Release picker showing stable versions with dates](screenshots/network-4-release-picker.png)
+
+### Download sizes, percent and time left
+
+Tick **Measure download sizes** in **2 Plan preview** or **3 Sync & finish**.
+The app first asks the server how big each file is (HEAD requests).
+- **Plan preview** then shows a **Size (est.)** column and a bar such as
+  "about 1.5 GiB of 10.0 GiB budget (estimate)". It warns if the estimate is
+  larger than your download budget. Files the server doesn't report show as
+  "unknown".
+- **Sync** shows percent, speed and time left, for example
+  "13% · 190.6 MiB of about 1.5 GiB · 35.8 MiB/s · about 38 s left (estimate)".
+
+Sizes are **estimates**. Every downloaded file is still checked against its
+SHA-256 checksum.
+
+![Plan preview with estimated sizes and the budget bar](screenshots/network-5-plan-sizes.png)
+![Sync with percent, speed and time left](screenshots/network-6-sync-eta.png)
+
+> Tested in 0.2.0 on Linux, against a local test proxy that required a login
+> and inspected HTTPS with a test company certificate, with real downloads from
+> static.rust-lang.org. **Not tested:** real corporate proxies other than that
+> test proxy, NTLM/Kerberos proxy logins (not supported; Basic only), SOCKS
+> proxies (not supported) and Windows.
+
 ---
 
-More: [README](../README.md) · [Roadmap](../ROADMAP.md) · [Release notes 0.1.0](releases/v0.1.0.md) ·
+More: [README](../README.md) · [Roadmap](../ROADMAP.md) · [Release notes 0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
 [Design](DESIGN.md) · [Changelog](../CHANGELOG.md)
