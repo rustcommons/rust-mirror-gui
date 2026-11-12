@@ -14,14 +14,14 @@
 use rust_mirror::events::{CancelToken, Control, EventKind, JsonLines, PROTOCOL_VERSION};
 use serde_json::{json, Value};
 use std::ffi::OsString;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Read};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
 /// rust-mirror library version compiled into this executable (checked by a test
 /// against Cargo.lock).
-pub const LIBRARY_VERSION: &str = "0.2.0";
+pub const LIBRARY_VERSION: &str = "0.3.0";
 
 /// Entry point; `args` are the arguments after `--worker`.
 pub fn main(args: Vec<OsString>) -> ExitCode {
@@ -70,6 +70,15 @@ fn listen_for_cancel(cancel: CancelToken) {
 }
 
 fn gui_command(command: &str, args: &[OsString]) -> i32 {
+    // As with rust-mirror's `--proxy-password-stdin`: consume exactly one
+    // bounded password line before any cancel-line processing. Never echoed.
+    let password = if args.iter().any(|a| a == "--proxy-password-stdin") {
+        let mut line = String::new();
+        let _ = io::stdin().lock().take(4098).read_line(&mut line);
+        Some(line.trim_end_matches(['\n', '\r']).to_string())
+    } else {
+        None
+    };
     let cancel = CancelToken::new();
     listen_for_cancel(cancel.clone());
     let control = Control::new(Arc::new(JsonLines::new(io::stdout())), cancel);
@@ -82,8 +91,13 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
         return 1;
     }
     let result = Options::parse(args).and_then(|o| match command {
-        "plan-all" => plan_all(&control, &o),
-        "network-env" | "inspect-ca" => Err(needs_030()),
+        "plan-all" => plan_all(&control, &o, password),
+        "network-env" => Ok(serde_json::to_value(
+            rust_mirror::network::detect_environment()?,
+        )?),
+        "inspect-ca" => Ok(json!({
+            "certificates": rust_mirror::network::inspect_ca_file(&o.path("--file")?)?
+        })),
         "retention-preview" => retention_preview(&control, &o),
         _ => retention_apply(&control, &o),
     });
@@ -211,33 +225,76 @@ fn invalid(message: String) -> Box<dyn std::error::Error + Send + Sync> {
     ))
 }
 
-/// Network settings and size estimates arrive with rust-mirror 0.3.0
-/// (docs/NETWORK.md). Until then the worker refuses them explicitly rather than
-/// silently connecting directly.
-fn needs_030() -> Box<dyn std::error::Error + Send + Sync> {
-    invalid("network settings, certificate details and size estimates need rust-mirror 0.3.0, which this build does not include yet".into())
+/// Build the library's network options from the same flags rust-mirror's CLI
+/// accepts (docs/NETWORK.md). The password arrives only via stdin.
+fn network_options(
+    o: &Options,
+    password: Option<String>,
+) -> Res<rust_mirror::network::NetworkOptions> {
+    use rust_mirror::network::{NetworkOptions, ProxyCredentials, ProxyMode};
+    let mut n = NetworkOptions::default();
+    let from_env = o.flags.iter().any(|f| f == "--proxy-from-env");
+    if o.get("--proxy").is_some() && from_env {
+        return Err(invalid(
+            "manual and environment proxy modes are mutually exclusive".into(),
+        ));
+    }
+    if o.get("--proxy").is_some() {
+        n.proxy = ProxyMode::Manual(o.text("--proxy")?);
+    } else if from_env {
+        n.proxy = ProxyMode::Environment;
+    }
+    let username = match o.get("--proxy-username-env") {
+        Some(name) => Some(
+            std::env::var(name)
+                .map_err(|_| invalid("proxy username variable is not set".into()))?,
+        ),
+        None => None,
+    };
+    match (username, password) {
+        (Some(username), Some(password)) => {
+            n.proxy_credentials = Some(ProxyCredentials { username, password })
+        }
+        (None, None) => {}
+        _ => {
+            return Err(invalid(
+                "enter both the proxy username and password, or neither".into(),
+            ))
+        }
+    }
+    if let Some(list) = o.get("--no-proxy") {
+        let list = list.to_str().ok_or("--no-proxy must be UTF-8")?;
+        n.no_proxy = list
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
+    n.extra_ca_file = o.get("--extra-ca-file").map(PathBuf::from);
+    let secs = |key: &str| -> Res<Option<u64>> {
+        o.get(key)
+            .map(|v| {
+                v.to_str()
+                    .and_then(|v| v.parse().ok())
+                    .ok_or_else(|| invalid(format!("{key} must be whole seconds")))
+            })
+            .transpose()
+    };
+    if let Some(s) = secs("--connect-timeout")? {
+        n.connect_timeout = std::time::Duration::from_secs(s);
+    }
+    if let Some(s) = secs("--read-timeout")? {
+        n.read_timeout = std::time::Duration::from_secs(s);
+    }
+    Ok(n)
 }
 
-const NETWORK_KEYS: &[&str] = &[
-    "--proxy",
-    "--no-proxy",
-    "--proxy-username-env",
-    "--extra-ca-file",
-    "--connect-timeout",
-    "--read-timeout",
-];
-
 /// Resolve every selection's metadata (no payload downloads, no files written).
-fn plan_all(control: &Control, o: &Options) -> Res<Value> {
-    if o.flags.iter().any(|f| f != "--allow-delete")
-        || o.values
-            .iter()
-            .any(|(k, _)| NETWORK_KEYS.contains(&k.as_str()))
-    {
-        return Err(needs_030());
-    }
+fn plan_all(control: &Control, o: &Options, password: Option<String>) -> Res<Value> {
     let config = rust_mirror::selection::Config::read(&o.path("--config")?)?;
-    let source = rust_mirror::HttpsSource::default();
+    let source = rust_mirror::HttpsSource::with_network(&network_options(o, password)?)?;
+    let estimate = o.flags.iter().any(|f| f == "--estimate-sizes");
     control.run("plan preview", || {
         let total = config.selections.len() as u64;
         let mut plans = Vec::new();
@@ -249,7 +306,13 @@ fn plan_all(control: &Control, o: &Options) -> Res<Value> {
                 total: Some(total),
             })?;
             let resolved = rust_mirror::selection::resolve(&config, &selection.name, &source)?;
-            plans.push(serde_json::to_value(&resolved.plan)?);
+            let mut plan = serde_json::to_value(&resolved.plan)?;
+            if estimate {
+                // Opt-in HEAD estimates; never verification.
+                let sizes = rust_mirror::selection::measure_sizes(&resolved, &source, control)?;
+                plan["sizes"] = serde_json::to_value(&sizes)?;
+            }
+            plans.push(plan);
         }
         Ok(json!({ "plans": plans }))
     })

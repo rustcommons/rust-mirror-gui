@@ -267,7 +267,7 @@ fn network_command(
             std::thread::sleep(step);
             let offline = args.iter().any(|a| a == "--offline");
             Some((true, format!(
-                r#"{{"releases":[{{"channel":"stable","version":"1.91.1","date":"2025-11-10"}},{{"channel":"stable","version":"1.91.0","date":"2025-10-30"}},{{"channel":"stable","version":"1.90.0","date":"2025-09-18"}},{{"channel":"stable","version":"1.89.0","date":"2025-08-07"}},{{"channel":"stable","version":"1.88.0","date":"2025-06-26"}},{{"channel":"beta","date":"2025-11-08"}},{{"channel":"beta","date":"2025-11-01"}},{{"channel":"nightly","date":"2025-11-10"}},{{"channel":"nightly","date":"2025-11-09"}}],"source_url":"https://static.rust-lang.org/manifests.txt","cached":{offline},"fetched_at":"2025-11-10T08:00:00Z","age_seconds":{}}}"#,
+                r#"{{"releases":[{{"channel":"stable","toolchain":"1.91.1","date":"2025-11-10"}},{{"channel":"stable","toolchain":"1.91.0","date":"2025-10-30"}},{{"channel":"stable","toolchain":"1.90.0","date":"2025-09-18"}},{{"channel":"beta","toolchain":"beta-2025-11-08","date":"2025-11-08"}},{{"channel":"nightly","toolchain":"nightly-2025-11-10","date":"2025-11-10"}}],"source_url":"https://static.rust-lang.org/manifests.txt","cached":{offline},"fetched_at":1762761600,"index_sha256":"00","age_seconds":{}}}"#,
                 if offline { 7200 } else { 0 }
             )))
         }

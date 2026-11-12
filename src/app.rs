@@ -1616,17 +1616,21 @@ fn release_choices(catalog: Option<&serde_json::Value>) -> Vec<(String, String)>
     let s = |v: &serde_json::Value, k: &str| {
         v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
     };
+    // rust-mirror's Release: channel, toolchain (numeric stable version or
+    // dated channel selector) and date. Stable first, then beta, then nightly.
     let mut out = Vec::new();
     for channel in ["stable", "beta", "nightly"] {
         for r in list.iter().filter(|r| s(r, "channel") == channel) {
-            let date = s(r, "date");
-            let version = s(r, "version");
-            if channel == "stable" && !version.is_empty() {
-                out.push((version.clone(), format!("{version}  (stable, {date})")));
-            } else if !date.is_empty() {
-                let value = format!("{channel}-{date}");
-                out.push((value.clone(), value));
+            let toolchain = s(r, "toolchain");
+            if toolchain.is_empty() {
+                continue;
             }
+            let label = if channel == "stable" {
+                format!("{toolchain}  (stable, {})", s(r, "date"))
+            } else {
+                toolchain.clone()
+            };
+            out.push((toolchain, label));
         }
     }
     out
@@ -1644,7 +1648,7 @@ fn release_status(catalog: Option<&serde_json::Value>) -> String {
     };
     let cached = c.get("cached").and_then(|x| x.as_bool()).unwrap_or(false);
     let warn = c
-        .get("refresh_warning")
+        .get("warning")
         .filter(|w| !w.is_null())
         .map(|_| " · refresh failed, showing cache")
         .unwrap_or("");

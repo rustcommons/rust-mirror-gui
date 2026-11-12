@@ -34,8 +34,9 @@ eframe = "0.37"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Compiled-in engine. Operations run in a `--worker` child process of this
-# executable, which speaks rust-mirror event protocol 1.
-rust-mirror = "0.2.0"
+# executable, which speaks rust-mirror event protocol 1. DEVELOPMENT ONLY: git pin
+# to the 0.3.0 branch; switch to crates.io `rust-mirror = "0.3.0"` before merging.
+rust-mirror = { git = "https://github.com/rustcommons/rust-mirror", rev = "3d86a14" }
 
 [profile.release]
 strip = "debuginfo"
