@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-No changes yet.
+- Documentation: add the 0.2.0 [publication record](docs/evals/2026-11-12-v0.2.0-publication.md)
+  and a roadmap item for using system network settings by default.
 
 ## [0.2.0] - 2026-11-12
 
