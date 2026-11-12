@@ -1,6 +1,6 @@
 # rust-mirror-gui design
 
-Status: **implemented in 0.1.0** (first release, 2026-11-11). The proposal sections are kept for history.
+Status: **implemented in 0.1.0** (first release, 2026-11-12). The proposal sections are kept for history.
 
 ## Decisions (owner, 2026-11-11)
 
@@ -279,11 +279,12 @@ or Nexus itself.
 ### Release 0.1.0 (running app)
 
 These are real screenshots of `rust-mirror-gui` with the built-in rust-mirror
-0.2.0 worker, captured 2026-11-11 on Linux aarch64 (Xvfb with Mesa lavapipe
+0.2.0 worker, captured 2026-11-12 on Linux aarch64 (window capture via `xwd`, so no automation cursor) (Xvfb with Mesa lavapipe
 software Vulkan). Downloads came from static.rust-lang.org into `/tmp`. Publish
 targeted a local HTTPS test server, not Nexus.
 
 ![Plan preview](screenshots/plan-preview.png)
+![Sync stopped](screenshots/sync-stopped.png)
 ![Sync resuming after Stop](screenshots/sync-resume-running.png)
 ![Sync finished](screenshots/sync-finished.png)
 ![Generations and retention preview](screenshots/generations-preview.png)
@@ -350,6 +351,6 @@ in-progress runs or anything on Nexus.
    event protocol. File the remaining gaps when needed.
 3. Confirm the first release scope: Selections, Plan, Sync, Publish. Retention
    follows G11.
-4. Confirm serde and serde_json as dependencies (needed for the event protocol).
+4. ~~Confirm serde and serde_json~~: approved by the owner 2026-11-11.
 5. Requirement ID prefix for this repository's future `docs/REQUIREMENTS.md`. The
    organization convention table does not list `rust-mirror-gui` yet.

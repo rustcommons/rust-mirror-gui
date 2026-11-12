@@ -4,7 +4,7 @@
 
 No changes yet.
 
-## [0.1.0] - 2026-11-11
+## [0.1.0] - 2026-11-12
 
 First release: a desktop app for building offline Rust toolchain mirrors with
 the rust-mirror library compiled in. See the
