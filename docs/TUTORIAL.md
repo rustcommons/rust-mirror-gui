@@ -294,9 +294,11 @@ Things to know:
 - Linux: install the graphics packages from [section 1](#1-install-and-launch).
   With no Vulkan or OpenGL driver at all, the window can't be created.
 - Windows over **Remote Desktop**, and computers **without a GPU**, have **not
-  been tested** with 0.1.0. A native Windows 11 launch has been checked. If it
-  fails, note the Windows version and how you connected, and tell the
-  maintainers.
+  been tested** with 0.1.0. A native Windows 11 launch has been checked. Testing
+  without a GPU and over Remote Desktop is deferred; see the
+  [roadmap](../ROADMAP.md#deferred-qualification) and its
+  [test plan](plans/NO-GPU-TEST-PLAN.md). If it fails for you, note the Windows
+  version and how you connected, and tell the maintainers.
 
 **The top bar says "operation worker not working".** The app runs its operations
 in a hidden copy of itself. Open **About the engine** for the message.
@@ -356,5 +358,5 @@ rust-mirror publish --preflight --source E:\transfer\complete-001\mirror --base-
 
 ---
 
-More: [README](../README.md) · [Release notes 0.1.0](releases/v0.1.0.md) ·
+More: [README](../README.md) · [Roadmap](../ROADMAP.md) · [Release notes 0.1.0](releases/v0.1.0.md) ·
 [Design](DESIGN.md) · [Changelog](../CHANGELOG.md)
