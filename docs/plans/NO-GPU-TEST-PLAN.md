@@ -1,6 +1,6 @@
 # No-GPU and Remote Desktop test plan
 
-Status: **planned, deferred** (2026-11-12). Not started. See the [roadmap](../../ROADMAP.md).
+Status: **planned, deferred** (2026-11-12). Not started. See the [roadmap](../ROADMAP.md).
 
 ## Question
 

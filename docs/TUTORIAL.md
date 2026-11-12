@@ -308,7 +308,7 @@ Things to know:
 - Windows over **Remote Desktop**, and computers **without a GPU**, have **not
   been tested** with 0.1.0. A native Windows 11 launch has been checked. Testing
   without a GPU and over Remote Desktop is deferred; see the
-  [roadmap](../ROADMAP.md#deferred-qualification) and its
+  [roadmap](ROADMAP.md#deferred-qualification) and its
   [test plan](plans/NO-GPU-TEST-PLAN.md). If it fails for you, note the Windows
   version and how you connected, and tell the maintainers.
 
@@ -483,5 +483,5 @@ SHA-256 checksum.
 
 ---
 
-More: [README](../README.md) · [Roadmap](../ROADMAP.md) · [Release notes 0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
+More: [README](../README.md) · [Roadmap](ROADMAP.md) · [Release notes 0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
 [Design](DESIGN.md) · [Changelog](../CHANGELOG.md)
