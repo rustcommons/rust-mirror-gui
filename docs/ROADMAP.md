@@ -2,7 +2,7 @@
 
 Planned and deferred work for rust-mirror-gui. Nothing here is implemented or
 promised for a specific release. Shipped behavior is described in the
-[README](README.md) and [changelog](CHANGELOG.md).
+[README](../README.md) and [changelog](../CHANGELOG.md).
 
 ## Deferred: qualification
 
@@ -11,7 +11,7 @@ promised for a specific release. Shipped behavior is described in the
   completes a sync on machines without a GPU, especially Windows Server over
   Remote Desktop. Includes a clear failure message where nothing can draw and
   tested workarounds. Waiting on a test environment decision.
-  Plan: [docs/plans/NO-GPU-TEST-PLAN.md](docs/plans/NO-GPU-TEST-PLAN.md).
+  Plan: [plans/NO-GPU-TEST-PLAN.md](plans/NO-GPU-TEST-PLAN.md).
 - **Screen readers.** Run NVDA, Narrator, VoiceOver and Orca against a form, a
   checkbox list and a progress display. Only the Linux accessibility tree has been
   inspected so far.
@@ -38,3 +38,14 @@ promised for a specific release. Shipped behavior is described in the
   Most of this belongs in rust-mirror's network layer, with the GUI exposing
   the choice. Not designed or approved yet.
 - Team feedback from the 0.1.0 demo (to be collected).
+
+## Possible future additions
+
+Ideas recorded for later. Not planned, designed or approved.
+
+- **Scheduled mirror updates** (considered and set aside by the owner on
+  2026-11-12: rust-mirror-gui is a simple desktop app and does not need a
+  scheduler). The idea: a single update run (sync, Rustup finish, retention,
+  optional publish) that the operating system's scheduler could start, such as
+  Windows Task Scheduler, a systemd timer or cron. If ever wanted, it belongs in
+  the rust-mirror command line rather than in the GUI.

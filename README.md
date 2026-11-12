@@ -88,7 +88,7 @@ writes to a server: use only a fresh, empty test repository.
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
 - [Release notes for 0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
-- [Roadmap](ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
+- [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
 - [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md)
 
