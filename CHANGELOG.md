@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Documentation: add a step-by-step [tutorial](docs/TUTORIAL.md) with screenshots
+  from the 0.1.0 app, linked from the README (GitHub only; no new release).
 - Documentation: add the 0.1.0 [publication record](docs/evals/2026-11-12-v0.1.0-publication.md)
   (registry archive, docs.rs, fresh install, tag and GitHub Release verification).
 
