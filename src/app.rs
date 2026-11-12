@@ -792,11 +792,7 @@ impl App {
         match op {
             Op::CheckNetwork => self.net_check = report.or(failure_report),
             Op::NetworkEnv => self.net_env = report,
-            Op::Releases => {
-                if report.is_some() {
-                    self.releases = report;
-                }
-            }
+            Op::Releases if report.is_some() => self.releases = report,
             Op::InspectCa => {
                 let file = if self.inspect_pending {
                     self.pending_ca.clone()
