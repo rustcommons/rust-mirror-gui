@@ -36,8 +36,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 - Never touch the user's real Rustup/Cargo homes or a real Nexus server without
   owner authorization. Never log credentials or disable TLS verification.
 - Dependencies: eframe and rust-mirror (approved 2026-11-11), plus serde and
-  serde_json for the event protocol (flagged for owner confirmation with the
-  first release). Add nothing else without owner approval.
+  serde_json for the event protocol (owner approved 2026-11-11). Add nothing else without owner approval.
 - Publishing crates, binaries or releases requires explicit owner authorization.
   CI build artifacts for owner trials are allowed; GitHub Releases are not.
   Do not publish placeholder crates to reserve names.
