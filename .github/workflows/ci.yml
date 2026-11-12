@@ -1,0 +1,49 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all-features
+      - run: cargo test --locked
+
+  windows-build:
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - run: cargo build --release --locked --bin rust-mirror-gui
+      - name: Stage trial package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/gui | Out-Null
+          Copy-Item target/release/rust-mirror-gui.exe, TRYING.md, LICENSE dist/gui/
+          Get-FileHash dist/gui/rust-mirror-gui.exe -Algorithm SHA256 | Format-List
+      - name: Smoke-test the built-in worker
+        shell: pwsh
+        run: |
+          $out = & dist/gui/rust-mirror-gui.exe --worker --version | Out-String
+          Write-Output $out
+          if ($out -notmatch '"protocol":1') { throw "worker did not report protocol 1" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-mirror-gui-windows-x86_64
+          path: dist/gui
+          if-no-files-found: error

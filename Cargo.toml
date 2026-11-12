@@ -1,0 +1,41 @@
+[package]
+name = "rust-mirror-gui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = "Desktop app for building offline Rust toolchain mirrors with rust-mirror"
+repository = "https://github.com/rustcommons/rust-mirror-gui"
+readme = "README.md"
+keywords = ["rustup", "mirror", "offline", "gui", "toolchain"]
+categories = ["development-tools", "gui"]
+include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
+default-run = "rust-mirror-gui"
+
+[[bin]]
+name = "rust-mirror-gui"
+path = "src/main.rs"
+
+# Test-only stand-in worker. It emits the event protocol from scripted
+# scenarios and performs no network or mirroring work. Built only with the
+# `fake-backend` feature, so `cargo install` never installs it.
+[[bin]]
+name = "fake-rust-mirror"
+path = "src/bin/fake-rust-mirror.rs"
+test = false
+required-features = ["fake-backend"]
+
+[features]
+# Builds the test-only fake worker; used by `cargo test --all-features`.
+fake-backend = []
+
+[dependencies]
+eframe = "0.37"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Compiled-in engine. Operations run in a `--worker` child process of this
+# executable, which speaks rust-mirror event protocol 1.
+rust-mirror = "0.2.0"
+
+[profile.release]
+strip = "debuginfo"
