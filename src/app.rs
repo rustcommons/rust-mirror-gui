@@ -9,9 +9,12 @@ use eframe::egui::{self, Color32, RichText};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+mod network_page;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Backend,
+    Network,
     Selections,
     Plan,
     Sync,
@@ -56,6 +59,16 @@ pub struct App {
     gen_confirm: String,
     catalog: Option<serde_json::Value>,
     prune_plan: Option<serde_json::Value>,
+    /// Proxy password: memory only, sent to the worker over stdin.
+    proxy_password: String,
+    net_env: Option<serde_json::Value>,
+    net_check: Option<serde_json::Value>,
+    ca_info: Option<(String, serde_json::Value)>,
+    pending_ca: String,
+    adding_ca: bool,
+    inspect_pending: bool,
+    releases: Option<serde_json::Value>,
+    releases_tried: bool,
 }
 
 impl App {
@@ -91,6 +104,15 @@ impl App {
             gen_confirm: String::new(),
             catalog: None,
             prune_plan: None,
+            proxy_password: String::new(),
+            net_env: None,
+            net_check: None,
+            ca_info: None,
+            pending_ca: String::new(),
+            adding_ca: false,
+            inspect_pending: false,
+            releases: None,
+            releases_tried: false,
         };
         app.check_backend(ctx);
         app
@@ -175,10 +197,11 @@ impl eframe::App for App {
                 .auto_shrink(false)
                 .show(ui, |ui| match self.page {
                     Page::Backend => self.page_backend(ui, &ctx),
-                    Page::Selections => self.page_selections(ui),
+                    Page::Selections => self.page_selections(ui, &ctx),
                     Page::Plan => self.page_plan(ui, &ctx),
                     Page::Sync => self.page_sync(ui, &ctx),
                     Page::Generations => self.page_generations(ui, &ctx),
+                    Page::Network => self.page_network(ui, &ctx),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
         });
@@ -229,6 +252,8 @@ impl App {
                     self.page = match op {
                         Op::Publish => Page::Publish,
                         Op::Plan => Page::Plan,
+                        Op::CheckNetwork | Op::NetworkEnv | Op::InspectCa => Page::Network,
+                        Op::Releases => Page::Selections,
                         Op::Discover | Op::RetentionPreview | Op::RetentionApply => {
                             Page::Generations
                         }
@@ -252,6 +277,7 @@ impl App {
             }
         };
         ui.small("PREPARE (connected machine)");
+        item(ui, Page::Network, "Network settings", None);
         item(ui, Page::Selections, "1  Selections", None);
         item(ui, Page::Plan, "2  Plan preview", None);
         item(ui, Page::Sync, "3  Sync & finish", None);
@@ -309,7 +335,22 @@ impl App {
         );
     }
 
-    fn page_selections(&mut self, ui: &mut egui::Ui) {
+    fn page_selections(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut refresh_releases = false;
+        if !self.releases_tried && !self.job_running() {
+            // Load the cached list once, without network access.
+            self.releases_tried = true;
+            if let Some(cache) = settings::release_cache_dir() {
+                let spec = ops::releases(
+                    &ops::worker_program(),
+                    &cache,
+                    false,
+                    &self.settings.network,
+                    "",
+                );
+                self.start(ctx, Op::Releases, spec);
+            }
+        }
         ui.heading("Selections");
         ui.label("Choose which Rust toolchains, platforms and components the mirror contains. This writes a configuration file that rust-mirror (GUI or command line) reads.");
         ui.add_space(8.0);
@@ -365,6 +406,41 @@ impl App {
                 &mut sel.toolchain,
                 "1.90.0, stable or stable-2025-09-18",
             );
+            ui.horizontal(|ui| {
+                ui.add_space(158.0);
+                let choices = release_choices(self.releases.as_ref());
+                egui::ComboBox::from_id_salt("toolchain-pick")
+                    .selected_text("Pick from release list")
+                    .width(220.0)
+                    .show_ui(ui, |ui| {
+                        if choices.is_empty() {
+                            ui.label("No release list yet. Press Refresh.");
+                        }
+                        for (value, label) in &choices {
+                            if ui
+                                .selectable_label(sel.toolchain == *value, label)
+                                .clicked()
+                            {
+                                sel.toolchain = value.clone();
+                            }
+                        }
+                    });
+                if ui
+                    .small_button("Refresh")
+                    .on_hover_text("Download the current release list (uses Network settings)")
+                    .clicked()
+                {
+                    refresh_releases = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(158.0);
+                ui.label(
+                    RichText::new(release_status(self.releases.as_ref()))
+                        .weak()
+                        .small(),
+                );
+            });
             ui.label(RichText::new("Host platforms (where the compiler runs)").strong());
             for (triple, label) in TESTED_HOSTS {
                 let mut on = sel.hosts.iter().any(|h| h == triple);
@@ -444,6 +520,33 @@ impl App {
                 egui::Label::new(RichText::new(self.draft.to_toml()).monospace()).selectable(true),
             );
         });
+        if refresh_releases {
+            if self.job_running() {
+                self.start_error = Some(
+                    "Another operation is running; refresh the release list when it finishes."
+                        .into(),
+                );
+            } else if let Some(cache) = settings::release_cache_dir() {
+                let spec = ops::releases(
+                    &ops::worker_program(),
+                    &cache,
+                    true,
+                    &self.settings.network,
+                    &self.proxy_password,
+                );
+                self.start(ctx, Op::Releases, spec);
+            }
+        }
+        if let Some(e) = &self.start_error {
+            banner(ui, RED, e);
+        }
+        // A successful release-list load needs no job panel; show failures.
+        let quiet = self.job.as_ref().is_some_and(|(op, j)| {
+            *op == Op::Releases && j.finished() && j.progress.result.as_ref().is_some_and(|r| r.ok)
+        });
+        if !quiet {
+            self.job_view(ui, &[Op::Releases]);
+        }
     }
 
     fn page_sync(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -479,6 +582,13 @@ impl App {
             );
             ui.radio_value(&mut self.sync_mode, SyncMode::Force, "Start over");
         });
+        ui.horizontal(|ui| {
+            ui.add_space(158.0);
+            ui.checkbox(
+                &mut s.measure_sizes,
+                "Measure download sizes first (shows percent and time left; estimates)",
+            );
+        });
         if self.sync_mode == SyncMode::Force {
             ui.horizontal(|ui| {
                 ui.add_space(158.0);
@@ -494,13 +604,17 @@ impl App {
         let ready = !s.config_path.trim().is_empty()
             && !s.sync_output.trim().is_empty()
             && (self.sync_mode != SyncMode::Force || self.force_confirmed);
-        let spec = ops::sync(
+        let mut spec = ops::sync(
             &ops::worker_program(),
             &s.config_path,
             &s.sync_output,
             &s.sync_previous,
             self.sync_mode,
         );
+        if s.measure_sizes {
+            spec.args.push("--estimate-sizes".into());
+        }
+        let spec = ops::with_network(spec, &s.network, &self.proxy_password);
         if self.start_row(ui, ready, "Start sync", &spec) {
             self.start(ctx, Op::Sync, spec);
             self.force_confirmed = false;
@@ -540,12 +654,16 @@ impl App {
                 let ready = !s.rustup_snapshot.trim().is_empty()
                     && !s.rustup_version.trim().is_empty()
                     && !s.rustup_output.trim().is_empty();
-                let spec = ops::rustup(
-                    &ops::worker_program(),
-                    &s.rustup_snapshot,
-                    &s.rustup_version,
-                    &s.rustup_output,
-                    &s.rustup_promote,
+                let spec = ops::with_network(
+                    ops::rustup(
+                        &ops::worker_program(),
+                        &s.rustup_snapshot,
+                        &s.rustup_version,
+                        &s.rustup_output,
+                        &s.rustup_promote,
+                    ),
+                    &s.network,
+                    &self.proxy_password,
                 );
                 if self.start_row(ui, ready, "Start Rustup finish", &spec) {
                     self.start(ctx, Op::Rustup, spec);
@@ -663,7 +781,28 @@ impl App {
             .as_ref()
             .filter(|r| r.ok)
             .and_then(|r| r.report.clone());
+        let failure_report = job
+            .progress
+            .result
+            .as_ref()
+            .and_then(|r| r.error.as_ref())
+            .and_then(|e| e.report.clone());
         match op {
+            Op::CheckNetwork => self.net_check = report.or(failure_report),
+            Op::NetworkEnv => self.net_env = report,
+            Op::Releases => {
+                if report.is_some() {
+                    self.releases = report;
+                }
+            }
+            Op::InspectCa => {
+                let file = if self.inspect_pending {
+                    self.pending_ca.clone()
+                } else {
+                    self.settings.network.extra_ca_file.clone()
+                };
+                self.ca_info = report.map(|r| (file, r));
+            }
             Op::Discover => {
                 // rust-mirror's `generations` report is the catalog itself.
                 self.catalog = report.map(|r| r.get("catalog").cloned().unwrap_or(r));
@@ -817,11 +956,26 @@ impl App {
             "mirror.toml (from the Selections page)",
         );
         let ready = !self.settings.config_path.trim().is_empty();
-        let spec = ops::plan(&ops::worker_program(), &self.settings.config_path);
+        ui.horizontal(|ui| {
+            ui.add_space(158.0);
+            ui.checkbox(
+                &mut self.settings.measure_sizes,
+                "Measure download sizes (HEAD requests; estimates)",
+            );
+        });
+        let spec = ops::with_network(
+            ops::plan(
+                &ops::worker_program(),
+                &self.settings.config_path,
+                self.settings.measure_sizes,
+            ),
+            &self.settings.network,
+            &self.proxy_password,
+        );
         if self.start_row(ui, ready, "Preview plan", &spec) {
             self.start(ctx, Op::Plan, spec);
         }
-        banner(ui, BLUE, "Upstream manifests don't record download sizes, so sizes appear only during the sync. A sync resolves metadata again, so a moving channel such as `stable` can change between this preview and the sync; the sync report shows what was actually frozen.");
+        banner(ui, BLUE, "Upstream manifests don't record download sizes. Tick \u{201c}Measure download sizes\u{201d} to ask the server for each file's size first (estimates, not verified). A sync resolves metadata again, so a moving channel such as `stable` can change between this preview and the sync; the sync report shows what was actually frozen.");
         let plans = self
             .job
             .as_ref()
@@ -1045,7 +1199,35 @@ impl App {
             .values()
             .filter_map(|f| f.total.map(|t| (f.bytes.min(t), t)))
             .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
-        if total > 0 {
+        let summary = job
+            .progress
+            .summary
+            .as_ref()
+            .and_then(|t| t.expected_bytes.filter(|e| *e > 0).map(|e| (t, e)));
+        if let Some((t, expected)) = summary {
+            // Whole-operation estimate from rust-mirror's transfer_summary.
+            let fraction = (t.completed_bytes as f64 / expected as f64).min(1.0);
+            let eta = match (job.exit, t.eta_seconds) {
+                (None, Some(s)) if s.is_finite() && s >= 0.0 => {
+                    format!(
+                        " · about {} left",
+                        human_duration(Duration::from_secs(s.ceil() as u64))
+                    )
+                }
+                _ => String::new(),
+            };
+            let rate = t
+                .bytes_per_second
+                .filter(|r| r.is_finite() && *r > 0.0)
+                .map(|r| format!(" · {}/s", human_bytes(r as u64)))
+                .unwrap_or_default();
+            ui.add(egui::ProgressBar::new(fraction as f32).text(format!(
+                "{:.0}% · {} of about {}{rate}{eta} (estimate)",
+                fraction * 100.0,
+                human_bytes(t.completed_bytes),
+                human_bytes(expected)
+            )));
+        } else if total > 0 {
             ui.add(
                 egui::ProgressBar::new(known as f32 / total as f32).text(format!(
                     "{} of {} (known sizes)",
@@ -1422,6 +1604,56 @@ fn show_prune_plan(ui: &mut egui::Ui, plan: &serde_json::Value) -> usize {
     folders.len()
 }
 
+/// Toolchain picker entries (value, label) from a release catalog: stable
+/// versions with dates, then beta and nightly by date.
+fn release_choices(catalog: Option<&serde_json::Value>) -> Vec<(String, String)> {
+    let Some(list) = catalog
+        .and_then(|c| c.get("releases"))
+        .and_then(|r| r.as_array())
+    else {
+        return Vec::new();
+    };
+    let s = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
+    let mut out = Vec::new();
+    for channel in ["stable", "beta", "nightly"] {
+        for r in list.iter().filter(|r| s(r, "channel") == channel) {
+            let date = s(r, "date");
+            let version = s(r, "version");
+            if channel == "stable" && !version.is_empty() {
+                out.push((version.clone(), format!("{version}  (stable, {date})")));
+            } else if !date.is_empty() {
+                let value = format!("{channel}-{date}");
+                out.push((value.clone(), value));
+            }
+        }
+    }
+    out
+}
+
+fn release_status(catalog: Option<&serde_json::Value>) -> String {
+    let Some(c) = catalog else {
+        return "release list not loaded".into();
+    };
+    let age = c.get("age_seconds").and_then(|a| a.as_u64()).unwrap_or(0);
+    let when = if age < 120 {
+        "just now".to_string()
+    } else {
+        format!("{} old", human_duration(Duration::from_secs(age)))
+    };
+    let cached = c.get("cached").and_then(|x| x.as_bool()).unwrap_or(false);
+    let warn = c
+        .get("refresh_warning")
+        .filter(|w| !w.is_null())
+        .map(|_| " · refresh failed, showing cache")
+        .unwrap_or("");
+    format!(
+        "{} list, {when}{warn}",
+        if cached { "cached" } else { "fresh" }
+    )
+}
+
 fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
     let text = |v: &serde_json::Value, k: &str| {
         v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
@@ -1442,6 +1674,48 @@ fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
         ))
         .strong(),
     );
+    // Opt-in size estimates (HEAD requests). Never treated as verified sizes.
+    let measured: Vec<&serde_json::Value> = plans.iter().filter_map(|p| p.get("sizes")).collect();
+    if !measured.is_empty() {
+        let known: u64 = measured
+            .iter()
+            .filter_map(|m| m.get("known_bytes").and_then(|b| b.as_u64()))
+            .sum();
+        let unknown: u64 = measured
+            .iter()
+            .filter_map(|m| m.get("unknown_artifacts").and_then(|b| b.as_u64()))
+            .sum();
+        let budget = plans
+            .iter()
+            .filter_map(|p| p.get("max_download_bytes").and_then(|b| b.as_u64()))
+            .max()
+            .unwrap_or(0);
+        let over = measured.iter().any(|m| {
+            m.get("exceeds_budget")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false)
+        });
+        let text = format!(
+            "about {} of {} budget (estimate{})",
+            human_bytes(known),
+            human_bytes(budget),
+            if unknown > 0 {
+                format!("; {unknown} file size(s) unknown")
+            } else {
+                String::new()
+            }
+        );
+        if budget > 0 {
+            ui.add(
+                egui::ProgressBar::new((known as f64 / budget as f64).min(1.0) as f32).text(text),
+            );
+        } else {
+            ui.label(text);
+        }
+        if over {
+            ui.label(RichText::new("The estimate is larger than the download budget. Raise the budget in Selections or select fewer items.").color(AMBER));
+        }
+    }
     for (i, plan) in plans.iter().enumerate() {
         let sel = plan.get("selection").cloned().unwrap_or_default();
         let artifacts = plan
@@ -1458,17 +1732,36 @@ fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
             text(plan, "date"),
             artifacts.len()
         );
+        let sizes: std::collections::HashMap<String, Option<u64>> = plan
+            .get("sizes")
+            .and_then(|z| z.get("artifacts"))
+            .and_then(|a| a.as_array())
+            .map(|a| {
+                a.iter()
+                    .map(|x| {
+                        (
+                            text(x, "path"),
+                            x.get("expected_bytes").and_then(|b| b.as_u64()),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let has_sizes = plan.get("sizes").is_some();
         egui::CollapsingHeader::new(title)
             .id_salt(("plan", i))
             .default_open(i == 0)
             .show(ui, |ui| {
                 egui::Grid::new(("plan-grid", i))
                     .striped(true)
-                    .num_columns(5)
+                    .num_columns(if has_sizes { 6 } else { 5 })
                     .spacing([14.0, 3.0])
                     .show(ui, |ui| {
                         for h in ["Package", "Target", "Kind", "File", "SHA-256"] {
                             ui.label(RichText::new(h).strong());
+                        }
+                        if has_sizes {
+                            ui.label(RichText::new("Size (est.)").strong());
                         }
                         ui.end_row();
                         for a in &artifacts {
@@ -1484,6 +1777,12 @@ fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
                                     .monospace(),
                             )
                             .on_hover_text(&sha);
+                            if has_sizes {
+                                match sizes.get(&path).copied().flatten() {
+                                    Some(b) => ui.label(human_bytes(b)),
+                                    None => ui.label(RichText::new("unknown").weak()),
+                                };
+                            }
                             ui.end_row();
                         }
                     });

@@ -31,7 +31,9 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
         .unwrap_or("")
         .to_string();
     let code = match command.as_str() {
-        "plan-all" | "retention-preview" | "retention-apply" => gui_command(&command, &args[1..]),
+        "plan-all" | "retention-preview" | "retention-apply" | "network-env" | "inspect-ca" => {
+            gui_command(&command, &args[1..])
+        }
         // Discovery is local and cheap; it takes no control input.
         "--version" | "--help" => {
             rust_mirror::cli::run_with_events(args, io::stdout(), CancelToken::new())
@@ -81,6 +83,7 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
     }
     let result = Options::parse(args).and_then(|o| match command {
         "plan-all" => plan_all(&control, &o),
+        "network-env" | "inspect-ca" => Err(needs_030()),
         "retention-preview" => retention_preview(&control, &o),
         _ => retention_apply(&control, &o),
     });
@@ -163,7 +166,14 @@ impl Options {
                 .to_str()
                 .ok_or("option names must be UTF-8")?
                 .to_string();
-            if key == "--allow-delete" {
+            if [
+                "--allow-delete",
+                "--estimate-sizes",
+                "--proxy-from-env",
+                "--proxy-password-stdin",
+            ]
+            .contains(&key.as_str())
+            {
                 o.flags.push(key);
                 continue;
             }
@@ -201,8 +211,31 @@ fn invalid(message: String) -> Box<dyn std::error::Error + Send + Sync> {
     ))
 }
 
+/// Network settings and size estimates arrive with rust-mirror 0.3.0
+/// (docs/NETWORK.md). Until then the worker refuses them explicitly rather than
+/// silently connecting directly.
+fn needs_030() -> Box<dyn std::error::Error + Send + Sync> {
+    invalid("network settings, certificate details and size estimates need rust-mirror 0.3.0, which this build does not include yet".into())
+}
+
+const NETWORK_KEYS: &[&str] = &[
+    "--proxy",
+    "--no-proxy",
+    "--proxy-username-env",
+    "--extra-ca-file",
+    "--connect-timeout",
+    "--read-timeout",
+];
+
 /// Resolve every selection's metadata (no payload downloads, no files written).
 fn plan_all(control: &Control, o: &Options) -> Res<Value> {
+    if o.flags.iter().any(|f| f != "--allow-delete")
+        || o.values
+            .iter()
+            .any(|(k, _)| NETWORK_KEYS.contains(&k.as_str()))
+    {
+        return Err(needs_030());
+    }
     let config = rust_mirror::selection::Config::read(&o.path("--config")?)?;
     let source = rust_mirror::HttpsSource::default();
     control.run("plan preview", || {

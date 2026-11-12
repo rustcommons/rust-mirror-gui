@@ -17,6 +17,55 @@ pub struct Settings {
     pub publish_ca: String,
     pub publish_user: String,
     pub generations_dir: String,
+    /// Per-machine network settings for upstream downloads. Stored here, never
+    /// in the shared mirror configuration. The proxy password is never stored.
+    pub network: NetworkSettings,
+    /// Measure download sizes (HEAD requests) before previews and syncs.
+    pub measure_sizes: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyMode {
+    #[default]
+    Direct,
+    Environment,
+    Manual,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct NetworkSettings {
+    pub mode: ProxyMode,
+    /// Manual proxy URL, e.g. `http://proxy.example.com:8080` (no user:pass@).
+    pub proxy_url: String,
+    /// Manual proxy username (not secret; the password is never saved).
+    pub proxy_username: String,
+    /// Comma-separated hosts/domains that bypass the proxy.
+    pub no_proxy: String,
+    /// Extra company CA certificate file (PEM), added to the built-in roots.
+    pub extra_ca_file: String,
+    pub connect_timeout_seconds: u32,
+    pub read_timeout_seconds: u32,
+}
+
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            mode: ProxyMode::Direct,
+            proxy_url: String::new(),
+            proxy_username: String::new(),
+            no_proxy: String::new(),
+            extra_ca_file: String::new(),
+            connect_timeout_seconds: 180,
+            read_timeout_seconds: 180,
+        }
+    }
+}
+
+/// Per-machine cache directory for the release list.
+pub fn release_cache_dir() -> Option<PathBuf> {
+    path().and_then(|p| p.parent().map(|d| d.join("release-cache")))
 }
 
 /// `<config dir>/rust-mirror-gui/settings.json`, or `None` if no home is known.

@@ -25,6 +25,9 @@ pub struct Spec {
     /// Shown instead of the derived command when the worker command has no
     /// one-to-one rust-mirror CLI equivalent.
     pub cli: Option<String>,
+    /// Secret written as the first stdin line (e.g. a proxy password for
+    /// `--proxy-password-stdin`). Never displayed, logged or put in argv/env.
+    pub stdin_secret: Option<String>,
 }
 
 impl Spec {
@@ -127,6 +130,8 @@ pub struct Progress {
     pub local_bytes: u64,
     /// Path of the most recent `artifact` event.
     pub current: Option<String>,
+    /// Latest aggregate estimate (rust-mirror 0.3.0 `transfer_summary`).
+    pub summary: Option<protocol::TransferSummary>,
     /// Latest heartbeat: (stage, operation, path).
     pub heartbeat: Option<(String, String, Option<String>)>,
     pub result: Option<Outcome>,
@@ -200,6 +205,10 @@ impl Progress {
                 }
                 f.bytes = b.count;
                 f.total = b.total.or(f.total);
+                None
+            }
+            Event::TransferSummary(t) => {
+                self.summary = Some(t.clone());
                 None
             }
             Event::Hashing(h) => {
@@ -303,6 +312,19 @@ impl Job {
         }
         no_console_window(&mut cmd);
         let mut child = cmd.spawn()?;
+        let mut stdin = child.stdin.take();
+        if let (Some(secret), Some(pipe)) = (&spec.stdin_secret, stdin.as_mut()) {
+            // One bounded line, consumed by the worker before cancel processing.
+            if let Err(e) = pipe
+                .write_all(secret.as_bytes())
+                .and_then(|_| pipe.write_all(b"\n"))
+                .and_then(|_| pipe.flush())
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e);
+            }
+        }
         let (tx, rx) = mpsc::channel();
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
@@ -322,7 +344,7 @@ impl Job {
             exit: None,
             exited_at: None,
             stdout_closed: false,
-            stdin: child.stdin.take(),
+            stdin,
             child,
             rx,
         })
@@ -659,9 +681,10 @@ mod tests {
             env: vec![("NEXUS_PASSWORD".into(), "secret".into())],
             label: "x".into(),
             cli: None,
+            stdin_secret: Some("hunter2".into()),
         };
         let shown = spec.display();
-        assert!(!shown.contains("secret"));
+        assert!(!shown.contains("secret") && !shown.contains("hunter2"));
         assert!(shown.contains("\"C:\\my dir\""));
         let w = crate::ops::sync(
             "C:/app/gui.exe",
