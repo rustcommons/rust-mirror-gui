@@ -39,7 +39,8 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   serde_json (approved by the owner 2026-11-11 for the event protocol). Add
   nothing else without owner approval.
 - Publishing crates, binaries or releases requires explicit owner authorization.
-  CI build artifacts for owner trials are allowed; GitHub Releases are not.
+  CI build artifacts for owner trials are allowed. GitHub Releases carry notes
+  only; attach no binaries without separate authorization.
   Do not publish placeholder crates to reserve names.
 
 ## Documentation and requirements traceability
