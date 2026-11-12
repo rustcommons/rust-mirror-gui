@@ -13,6 +13,8 @@ can stop or end it.
 
 ![Sync running in rust-mirror-gui](https://raw.githubusercontent.com/rustcommons/rust-mirror-gui/main/docs/screenshots/sync-resume-running.png)
 
+**New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
+
 **Status: 0.1.0, first release.** It works for the flows listed below. Remote
 Desktop, screen readers and Windows/macOS runtime behavior are not yet verified;
 see [known limits](docs/releases/v0.1.0.md#validation-and-limits).
@@ -72,6 +74,7 @@ writes to a server: use only a fresh, empty test repository.
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
 - [Release notes for 0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
+- [Roadmap](ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
 - [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md)
 
