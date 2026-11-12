@@ -340,7 +340,9 @@ impl App {
         if !self.releases_tried && !self.job_running() {
             // Load the cached list once, without network access.
             self.releases_tried = true;
-            if let Some(cache) = settings::release_cache_dir() {
+            // Only when a cache exists: a first run has none and must not
+            // report a failure; Refresh creates it.
+            if let Some(cache) = settings::release_cache_dir().filter(|c| c.is_dir()) {
                 let spec = ops::releases(
                     &ops::worker_program(),
                     &cache,
@@ -1619,8 +1621,14 @@ fn release_choices(catalog: Option<&serde_json::Value>) -> Vec<(String, String)>
     // rust-mirror's Release: channel, toolchain (numeric stable version or
     // dated channel selector) and date. Stable first, then beta, then nightly.
     let mut out = Vec::new();
-    for channel in ["stable", "beta", "nightly"] {
-        for r in list.iter().filter(|r| s(r, "channel") == channel) {
+    // All stable releases; only the most recent dated beta/nightly builds
+    // (the index lists thousands). Older ones can still be typed.
+    for (channel, limit) in [("stable", usize::MAX), ("beta", 20), ("nightly", 30)] {
+        for r in list
+            .iter()
+            .filter(|r| s(r, "channel") == channel)
+            .take(limit)
+        {
             let toolchain = s(r, "toolchain");
             if toolchain.is_empty() {
                 continue;

@@ -278,3 +278,39 @@ fn proxy_password_reaches_worker_over_stdin_and_cancel_still_works() {
         .contains("password supplied: true"));
     assert!(!job.log.iter().any(|l| l.text.contains("pw-123")));
 }
+
+#[test]
+fn built_in_worker_reads_certificate_details_offline() {
+    // Public test certificate only (no key). Diagnostic; nothing is trusted.
+    let pem = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/test-ca.pem");
+    let mut job = Job::start(ops::inspect_ca(&gui_exe().to_string_lossy(), pem), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert_eq!(job.health(), Health::Succeeded);
+    let report = job.progress.result.clone().unwrap().report.unwrap();
+    let cert = &report["certificates"][0];
+    assert_eq!(cert["subject"], "CN=Test CA");
+    assert_eq!(cert["sha256"].as_str().unwrap().len(), 64);
+}
+
+#[test]
+fn built_in_worker_requires_both_proxy_username_and_password() {
+    use rust_mirror_gui::settings::{NetworkSettings, ProxyMode};
+    let net = NetworkSettings {
+        mode: ProxyMode::Manual,
+        proxy_url: "http://127.0.0.1:9".into(),
+        proxy_username: "alice".into(),
+        ..Default::default()
+    };
+    let spec = ops::with_network(
+        ops::plan(&gui_exe().to_string_lossy(), "missing.toml", false),
+        &net,
+        "",
+    );
+    let mut job = Job::start(spec, || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert!(
+        matches!(job.health(), Health::Failed { .. }),
+        "{:?}",
+        job.health()
+    );
+}

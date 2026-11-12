@@ -90,6 +90,18 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
     if control.emit(hello).is_err() {
         return 1;
     }
+    if matches!(command, "network-env" | "inspect-ca") {
+        let name = if command == "network-env" {
+            "read environment"
+        } else {
+            "read certificate file"
+        };
+        let _ = control.emit(EventKind::Stage {
+            name: name.into(),
+            index: 1,
+            total: Some(1),
+        });
+    }
     let result = Options::parse(args).and_then(|o| match command {
         "plan-all" => plan_all(&control, &o, password),
         "network-env" => Ok(serde_json::to_value(
