@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-No changes yet.
+- Documentation: add the 0.1.0 [publication record](docs/evals/2026-11-12-v0.1.0-publication.md)
+  (registry archive, docs.rs, fresh install, tag and GitHub Release verification).
 
 ## [0.1.0] - 2026-11-12
 
