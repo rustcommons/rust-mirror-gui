@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-No changes yet.
+- Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
 
 ## [0.3.0] - 2026-11-13
 
