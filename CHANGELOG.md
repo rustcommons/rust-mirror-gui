@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 - Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
+
+## [0.4.0] - 2026-11-13
+
+Crate retention and Cargo.lock import. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.0.md).
+
 - **Crate retention page:** list the crate mirrors in a workspace folder;
   set the policy (next sync's previous, keep newest, previous to keep,
   pinned mirrors, as-of date) and save it in the catalog; preview the exact

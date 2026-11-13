@@ -101,7 +101,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.4.0 (draft)](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
