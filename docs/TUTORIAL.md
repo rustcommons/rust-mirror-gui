@@ -1,8 +1,9 @@
-# rust-mirror-gui tutorial (version 0.3.0)
+# rust-mirror-gui tutorial (version 0.4.0)
 
 This tutorial teaches you to build an offline Rust toolchain mirror with
-rust-mirror-gui and publish it to Nexus, and (new in 0.3.0) mirror an approved
-set of crates.io crates. It describes only what version 0.3.0 does.
+rust-mirror-gui and publish it to Nexus, and mirror an approved set of
+crates.io crates (0.3.0), and remove old crate mirrors safely (new in 0.4.0).
+It describes only what version 0.4.0 does.
 
 **Behind a company proxy, or seeing certificate errors?** Do
 [section 11, Corporate network](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)
@@ -20,6 +21,7 @@ first.
 > 8. Every page shows the matching `rust-mirror` command under **Same as**.
 > 9. Company proxy? Use **Network settings**, then **Test connection** first ([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
 > 10. Crates: **Crate catalog** → paste a `[dependencies]` block → **Crate preview & sync** → approve the preview once → **Client setup** ([section 12](#12-mirroring-crates)).
+> 11. Old crate mirrors: **Crate retention** → **Discover** → **Preview removal** → type `delete N` ([section 12.6](#126-crate-retention)).
 
 The screenshots come from Linux, so the paths look like `/tmp/tut/demo`. On
 Windows you would use paths such as `C:\rm-demo`, and fonts and window borders
@@ -27,8 +29,8 @@ look slightly different.
 - Sections 2–7 were captured with 0.1.0. In 0.2.0 the left menu also has
   **Network settings**, Selections has a release picker, and Plan preview and
   Sync have a **Measure download sizes** option. Everything else is the same.
-- Section 11 was captured with 0.2.0; section 12 with 0.3.0. From 0.3.0 the top
-  bar reads "rust-mirror 0.4.0 built in".
+- Section 11 was captured with 0.2.0; section 12 with 0.3.0, and 12.6 with
+  0.4.0. From 0.3.0 the top bar reads "rust-mirror 0.4.0 built in".
 
 ## Contents
 
@@ -619,9 +621,7 @@ settings for you.
 
 - **Generations & retention** lists crate mirrors as "crates: N crates, M
   versions". The retention policy on that page applies to toolchain mirrors
-  only. To preview or remove crate mirrors, use the command line:
-  `rust-mirror crates prune --config CATALOG --directory DIR --next-previous MIRROR --as-of YYYY-MM-DD`.
-  It does a dry run by default.
+  only. To remove crate mirrors, use **Crate retention** (section 12.6).
 
   ![Generations list showing a crate mirror](screenshots/crates-7-generations.png)
 - **Publish** works as in section 7: use the crate mirror's `mirror` folder.
@@ -650,7 +650,57 @@ settings for you.
 > **Not in 0.3.0:** crate retention in the app (use the CLI), Cargo.lock
 > import, git/path/alternate-registry crates, and authenticated Cargo readers.
 
+### 12.6 Crate retention
+
+*New in 0.4.0.* Crate mirrors pile up: every crate sync makes a new folder.
+**Crate retention** shows which ones a policy would remove and why each other
+one is kept. It deletes only after you type a confirmation. It removes local
+folders only; nothing on Nexus is deleted.
+
+1. Fill in **Crate catalog** (the catalog the mirrors were made from; its
+   pinned versions are protected) and **Workspace folder** (the folder that
+   holds your crate run folders). Press **Discover**. The table lists every
+   crate mirror with its contents and size.
+2. Set the policy:
+   - **Next sync's previous**: the mirror your next crate sync will reuse.
+     It is always kept.
+   - **Always keep newest** N mirrors, and **Previous mirrors to keep**.
+   - **Pinned mirrors**: tick any mirror that must never be removed.
+   - **As of**: the date the policy is evaluated for (today by default).
+
+   **Save policy in catalog** writes it into the catalog's
+   `[crate-retention]`, so `rust-mirror crates prune` uses the same policy.
+3. Press **Preview removal**. Nothing is deleted. Each folder is listed as
+   **remove** (with its size) or **keep**, with every reason it is kept: the
+   current generation, the newest, the next sync's previous, a pinned
+   mirror, or a pinned crate version that lives in it.
+
+   ![Crate retention preview: one mirror to remove, two kept with reasons](screenshots/crates-12-retention-preview.png)
+4. Type the phrase shown (for example `delete 1`). This enables
+   **Delete N crate mirror(s)**. rust-mirror previews again just before
+   deleting. If any folder changed since your preview (a new sync finished,
+   a file changed), it refuses and deletes nothing. Then preview again.
+
+   ![Stale preview refused: nothing was deleted](screenshots/crates-13-retention-stale.png)
+
+   On success the log lists every deleted file and the total size freed.
+   There is no undo.
+
+   ![Deleted one crate mirror: 211.7 KiB freed](screenshots/crates-14-retention-deleted.png)
+
+**Known issue (rust-mirror 0.4.0):** after a successful delete, each pruned
+run folder still holds its `plan.json`. Discover then shows it as
+"crates run: in_progress", and the next **Preview removal** refuses with
+"paused run previous generation is missing from discovery". Nothing is
+deleted. This has been reported to rust-mirror. Until it is fixed, prune
+once per workspace folder, or keep each crate sync in its own workspace
+folder.
+
+The same steps on the command line:
+`rust-mirror crates prune --config CATALOG --directory DIR --next-previous MIRROR --as-of YYYY-MM-DD`
+does a dry run; add `--apply` to delete.
+
 ---
 
-More: [README](../README.md) · [Roadmap](ROADMAP.md) · [Release notes 0.3.0](releases/v0.3.0.md) · [0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
+More: [README](../README.md) · [Roadmap](ROADMAP.md) · [Release notes 0.4.0](releases/v0.4.0.md) · [0.3.0](releases/v0.3.0.md) · [0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
 [Design](DESIGN.md) · [Changelog](../CHANGELOG.md)

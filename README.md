@@ -86,10 +86,14 @@ writes to a server: use only a fresh, empty test repository.
     flags, reason), change summary, index age, budget checks, **Why?**, one
     approval for the whole list, download with stop/resume and retry reasons,
     and **Client setup** with the `.cargo/config.toml` snippet.
+  - Crate retention: list crate mirrors, set the policy, preview the exact
+    folders and sizes with keep reasons, then delete only after you type a
+    confirmation. A preview that is out of date is refused.
 - **Not supported:** SOCKS proxies, and proxy logins other than Basic (for
   example NTLM or Kerberos).
-- **Not in the app yet:** crate retention (use `rust-mirror crates prune`),
-  Cargo.lock import, git/path/alternate-registry crates.
+- **Not in the app yet:** git/path/alternate-registry crates. Cargo.lock
+  import is built against the rust-mirror 0.5.0 contract and is enabled when
+  0.5.0 is built in.
 - **Planned:** loading existing toolchain configurations.
 - **Never** activates Nexus groups, deletes remote data or changes clients.
   Credentials are passed only to the worker process and never saved.
