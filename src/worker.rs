@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 /// rust-mirror library version compiled into this executable (checked by a test
 /// against Cargo.lock).
-pub const LIBRARY_VERSION: &str = "0.4.0";
+pub const LIBRARY_VERSION: &str = "0.5.0";
 
 /// Entry point; `args` are the arguments after `--worker`.
 pub fn main(args: Vec<OsString>) -> ExitCode {
@@ -37,7 +37,9 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
         | "network-env"
         | "inspect-ca"
         | "crates-write"
-        | "crates-client-config" => gui_command(&command, &args[1..]),
+        | "crates-client-config"
+        | "crates-retention-preview"
+        | "crates-retention-apply" => gui_command(&command, &args[1..]),
         // Discovery is local and cheap; it takes no control input.
         "--version" | "--help" => {
             rust_mirror::cli::run_with_events(args, io::stdout(), CancelToken::new())
@@ -96,12 +98,19 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
     }
     if matches!(
         command,
-        "network-env" | "inspect-ca" | "crates-write" | "crates-client-config"
+        "network-env"
+            | "inspect-ca"
+            | "crates-write"
+            | "crates-client-config"
+            | "crates-retention-preview"
+            | "crates-retention-apply"
     ) {
         let name = match command {
             "network-env" => "read environment",
             "inspect-ca" => "read certificate file",
             "crates-write" => "write catalog",
+            "crates-retention-preview" => "read generations",
+            "crates-retention-apply" => "re-check and delete",
             _ => "read crate generation",
         };
         let _ = control.emit(EventKind::Stage {
@@ -116,6 +125,8 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
             rust_mirror::network::detect_environment()?,
         )?),
         "crates-write" => crates_write(&o),
+        "crates-retention-preview" => crates_retention_preview(&control, &o),
+        "crates-retention-apply" => crates_retention_apply(&control, &o),
         "crates-client-config" => Ok(json!({
             "config": rust_mirror::crates::mirror::client_config_for_generation(
                 &o.path("--generation")?
@@ -315,6 +326,49 @@ fn network_options(
         n.read_timeout = std::time::Duration::from_secs(s);
     }
     Ok(n)
+}
+
+/// Read-only crate retention preview. The catalog (JSON, with the window's
+/// `crate-retention` policy) supplies the policy and exact crate pins.
+fn crates_retention_preview(control: &Control, o: &Options) -> Res<Value> {
+    let file = o.path("--catalog-json")?;
+    let raw = std::fs::read(&file)?;
+    let _ = std::fs::remove_file(&file);
+    let catalog: rust_mirror::crates::catalog::Catalog =
+        serde_json::from_slice(&raw).map_err(|e| invalid(format!("invalid catalog: {e}")))?;
+    let plan = rust_mirror::crates::retention::preview_directory_with_control(
+        &catalog,
+        &o.path("--directory")?,
+        &o.path("--next-previous")?,
+        &o.text("--as-of")?,
+        control,
+    )?;
+    Ok(json!({ "plan": plan }))
+}
+
+/// Apply exactly the reviewed crate prune plan; the library re-previews and
+/// refuses a stale plan (`resume_mismatch`) before deleting anything.
+fn crates_retention_apply(control: &Control, o: &Options) -> Res<Value> {
+    if !o.flags.iter().any(|f| f == "--allow-delete") {
+        return Err(invalid("deletion needs --allow-delete".into()));
+    }
+    let plan_file = o.path("--plan-file")?;
+    let raw = std::fs::read(&plan_file)?;
+    let _ = std::fs::remove_file(&plan_file);
+    let plan: rust_mirror::crates::retention::PrunePlan =
+        serde_json::from_slice(&raw).map_err(|e| invalid(format!("invalid plan: {e}")))?;
+    let report = rust_mirror::crates::retention::apply_with_control(&plan, true, control)?;
+    if let Some(failure) = &report.failure {
+        return Err(Box::new(rust_mirror::Error::new(
+            rust_mirror::ErrorKind::Io,
+            format!(
+                "deletion stopped at {}: {} (earlier deletions remain; inspect before retrying)",
+                failure.path.display(),
+                failure.message
+            ),
+        )));
+    }
+    Ok(serde_json::to_value(&report)?)
 }
 
 /// Validate an edited crate catalog (JSON from the window) and write it as

@@ -4,6 +4,37 @@
 
 - Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
 
+## [0.4.0] - 2026-11-13
+
+Cargo.lock import and crate retention. The built-in engine is now
+rust-mirror 0.5.0. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.0.md).
+
+- **Windows blank window fixed:** render with Direct3D 12 on Windows unless
+  `WGPU_BACKEND` is set. Some Vulkan drivers (seen on an AMD Radeon RX 580)
+  showed only a blank window in 0.3.0.
+- **Cargo.lock import** (Crate catalog page):
+  - import one or more lock files as named sources, by path or by dropping
+    them on the window; names are suggested from the project folder;
+  - an import summary before anything is written: pinned versions added,
+    removed and unchanged; skipped git and path entries with line numbers;
+    refused registries and other problems with line, column and a fix; a
+    warning when the project also needs git or path sources;
+  - re-importing a source shows exactly what changed;
+  - lock sources are listed as groups in the catalog, each with a remove
+    preview (mirrored files are never deleted);
+  - preview rows show which lock sources need each version and flag yanked
+    versions kept for a lock file; the filter matches source names.
+- **Crate retention page:** list the crate mirrors in a workspace folder;
+  set the policy (next sync's previous, keep newest, previous to keep,
+  pinned mirrors, as-of date) and save it in the catalog; preview the exact
+  folders and bytes to remove with every keep reason, including the catalog
+  crates and Cargo.lock sources that protect a mirror; delete only after
+  typing `delete N`. rust-mirror previews again before deleting and refuses
+  a stale preview, deleting nothing.
+- Deletion jobs no longer show the re-check byte count as if it were
+  deletion progress.
+
 ## [0.3.0] - 2026-11-13
 
 Crate mirroring. The built-in engine is now rust-mirror 0.4.0. See the

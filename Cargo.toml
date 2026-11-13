@@ -1,6 +1,6 @@
 [package]
 name = "rust-mirror-gui"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -35,7 +35,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Compiled-in engine. Operations run in a `--worker` child process of this
 # executable, which speaks rust-mirror event protocol 1.
-rust-mirror = "0.4.0"
+rust-mirror = "0.5.0"
 
 [profile.release]
 strip = "debuginfo"

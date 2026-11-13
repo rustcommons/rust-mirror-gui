@@ -60,6 +60,11 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   `## [X.Y.Z] - YYYY-MM-DD` entries) and `docs/releases/vX.Y.Z.md`. The owner
   authorized the first release, 0.1.0, on 2026-11-11. Its tag and GitHub Release
   carry no binaries.
+- On 2026-11-13 the owner authorized publication of 0.4.0 once it is ready, that
+  is, after rust-mirror 0.5.0 is on crates.io, and said to merge PRs once their
+  checks pass. The flow is unchanged: the maintainer reports each green PR, the
+  coordinator reviews, merges and publishes, and the maintainer does the
+  post-publication steps.
 
 ## Release documentation
 

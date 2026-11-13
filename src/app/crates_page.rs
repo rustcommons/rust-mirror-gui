@@ -68,6 +68,27 @@ fn temp_file(stem: &str, ext: &str) -> std::path::PathBuf {
     ))
 }
 
+/// Names of the Cargo.lock sources that require a preview row (0.5.0 `sources`).
+fn lock_sources(row: &Value) -> Vec<String> {
+    row.get("sources")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter(|x| s(x, "kind") == "lock")
+                .map(|x| s(x, "name"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// True when the row is also wanted by the manual catalog (or the plan
+/// predates `sources`).
+fn has_manual_source(row: &Value) -> bool {
+    row.get("sources")
+        .and_then(Value::as_array)
+        .is_none_or(|a| a.iter().any(|x| s(x, "kind") == "manual"))
+}
+
 /// A new, valid-shaped catalog; the library fills omitted policy defaults.
 fn new_catalog() -> Value {
     json!({
@@ -156,6 +177,19 @@ impl App {
         true
     }
 
+    pub(super) fn crates_catalog(&self) -> Option<&Value> {
+        self.crates.catalog.as_ref()
+    }
+
+    pub(super) fn crates_dirty(&self) -> bool {
+        self.crates.dirty
+    }
+
+    /// Reload the catalog file after rust-mirror rewrote it.
+    pub(super) fn crates_reload(&mut self) {
+        self.crates.reload_after_save = true;
+    }
+
     pub(super) fn page_crate_catalog(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let program = ops::worker_program();
         if self.crates.reload_after_save && !self.job_running() {
@@ -203,6 +237,8 @@ impl App {
         self.crate_table(ui);
         ui.add_space(6.0);
         self.crate_paste(ui, ctx, &program);
+        ui.add_space(6.0);
+        self.crate_locks(ui, ctx, &program);
         ui.add_space(6.0);
         self.crate_policy(ui);
         ui.add_space(8.0);
@@ -713,7 +749,7 @@ impl App {
             let l = ui.label("Filter");
             ui.add(
                 egui::TextEdit::singleline(&mut self.crates.filter)
-                    .hint_text("crate name")
+                    .hint_text("crate or lock source name")
                     .desired_width(200.0),
             )
             .labelled_by(l.id);
@@ -721,7 +757,13 @@ impl App {
         let f = self.crates.filter.trim().to_lowercase();
         let shown: Vec<&Value> = rows
             .iter()
-            .filter(|r| f.is_empty() || s(r, "name").contains(&f))
+            .filter(|r| {
+                f.is_empty()
+                    || s(r, "name").contains(&f)
+                    || lock_sources(r)
+                        .iter()
+                        .any(|n| n.to_lowercase().contains(&f))
+            })
             .collect();
         let mut explain = None;
         egui::ScrollArea::vertical()
@@ -745,7 +787,9 @@ impl App {
                                 None => ui.label(RichText::new("unknown").weak()),
                             };
                             let mut flags = Vec::new();
-                            if r["yanked"] == json!(true) {
+                            if r["locked_yanked"] == json!(true) {
+                                flags.push("yanked, kept for a Cargo.lock");
+                            } else if r["yanked"] == json!(true) {
                                 flags.push("yanked");
                             }
                             if r["lock_only"] == json!(true) {
@@ -766,6 +810,12 @@ impl App {
                                 } else {
                                     format!("needed by {parent} ({})", s(p, "requirement"))
                                 }
+                            };
+                            let locks = lock_sources(r);
+                            let why = match (locks.is_empty(), has_manual_source(r)) {
+                                (true, _) => why,
+                                (false, false) => format!("Cargo.lock: {}", locks.join(", ")),
+                                (false, true) => format!("{why}; Cargo.lock: {}", locks.join(", ")),
                             };
                             ui.label(why);
                             if ui.small_button("Why?").clicked() {
