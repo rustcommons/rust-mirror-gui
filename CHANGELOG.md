@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 - Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
+- Documentation: add the 0.4.0 [publication record](docs/evals/2026-11-13-v0.4.0-publication.md), the
+  Windows renderer finding in the [0.4.0 validation record](docs/evals/2026-11-13-v0.4.0-validation.md),
+  and a tutorial troubleshooting entry for a blank window on Windows.
 
 ## [0.4.0] - 2026-11-13
 
