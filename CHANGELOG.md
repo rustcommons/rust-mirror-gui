@@ -10,6 +10,9 @@ Cargo.lock import and crate retention. The built-in engine is now
 rust-mirror 0.5.0. See the
 [versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.0.md).
 
+- **Windows blank window fixed:** render with Direct3D 12 on Windows unless
+  `WGPU_BACKEND` is set. Some Vulkan drivers (seen on an AMD Radeon RX 580)
+  showed only a blank window in 0.3.0.
 - **Cargo.lock import** (Crate catalog page):
   - import one or more lock files as named sources, by path or by dropping
     them on the window; names are suggested from the project folder;
