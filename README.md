@@ -16,13 +16,13 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.3.0, crate mirroring.** It adds a crate catalog editor (paste from
-Cargo.toml), a preview with one approval for the whole list, "why included",
-crate download with stop and resume, and Cargo client setup. It builds in
-rust-mirror 0.4.0. The 0.2.0 corporate-network features (proxy, company
-certificates, connection test, size estimates) apply to crates too. Remote
-Desktop, screen readers and Windows/macOS runtime behavior are not yet
-verified; see [known limits](docs/releases/v0.3.0.md#validation-and-limits).
+**Status: 0.4.0, Cargo.lock import and crate retention.** Import projects'
+Cargo.lock files so the mirror holds exactly the crates.io versions they
+build with, and remove old crate mirrors with a preview and a typed
+confirmation. It builds in rust-mirror 0.5.0. Crate mirroring (0.3.0) and the
+corporate-network features (0.2.0) are unchanged. Remote Desktop, screen
+readers and Windows/macOS runtime behavior are not yet verified; see
+[known limits](docs/releases/v0.4.0.md#validation-and-limits).
 
 ## Install
 
@@ -91,9 +91,12 @@ writes to a server: use only a fresh, empty test repository.
     confirmation. A preview that is out of date is refused.
 - **Not supported:** SOCKS proxies, and proxy logins other than Basic (for
   example NTLM or Kerberos).
-- **Not in the app yet:** git/path/alternate-registry crates. Cargo.lock
-  import is built against the rust-mirror 0.5.0 contract and is enabled when
-  0.5.0 is built in.
+  - Cargo.lock import: add lock files as named sources, review an import
+    summary (versions added and removed, skipped git and path entries,
+    line-numbered problems) before writing, re-import with a diff, and
+    remove a source. Preview rows show which sources need each version.
+- **Not in the app yet:** git/path/alternate-registry crates (git and path
+  entries in a Cargo.lock are skipped and reported).
 - **Planned:** loading existing toolchain configurations.
 - **Never** activates Nexus groups, deletes remote data or changes clients.
   Credentials are passed only to the worker process and never saved.
@@ -101,7 +104,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.4.0 (draft)](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

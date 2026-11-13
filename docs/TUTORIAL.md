@@ -2,7 +2,8 @@
 
 This tutorial teaches you to build an offline Rust toolchain mirror with
 rust-mirror-gui and publish it to Nexus, and mirror an approved set of
-crates.io crates (0.3.0), and remove old crate mirrors safely (new in 0.4.0).
+crates.io crates (0.3.0). New in 0.4.0: import projects' Cargo.lock files and
+remove old crate mirrors safely.
 It describes only what version 0.4.0 does.
 
 **Behind a company proxy, or seeing certificate errors?** Do
@@ -22,6 +23,7 @@ first.
 > 9. Company proxy? Use **Network settings**, then **Test connection** first ([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
 > 10. Crates: **Crate catalog** → paste a `[dependencies]` block → **Crate preview & sync** → approve the preview once → **Client setup** ([section 12](#12-mirroring-crates)).
 > 11. Old crate mirrors: **Crate retention** → **Discover** → **Preview removal** → type `delete N` ([section 12.6](#126-crate-retention)).
+> 12. A project's exact versions: **Crate catalog** → **Cargo.lock sources** → add the file → **Preview import** → **Write** ([section 12.7](#127-import-cargolock-files)).
 
 The screenshots come from Linux, so the paths look like `/tmp/tut/demo`. On
 Windows you would use paths such as `C:\rm-demo`, and fonts and window borders
@@ -29,8 +31,11 @@ look slightly different.
 - Sections 2–7 were captured with 0.1.0. In 0.2.0 the left menu also has
   **Network settings**, Selections has a release picker, and Plan preview and
   Sync have a **Measure download sizes** option. Everything else is the same.
-- Section 11 was captured with 0.2.0; section 12 with 0.3.0, and 12.6 with
-  0.4.0. From 0.3.0 the top bar reads "rust-mirror 0.4.0 built in".
+- Section 11 was captured with 0.2.0; section 12 with 0.3.0, and 12.6–12.7
+  with 0.4.0. In 0.3.0 the top bar reads "rust-mirror 0.4.0 built in"; from
+  0.4.0 it reads "rust-mirror 0.5.0 built in". The first three crate
+  retention screenshots were taken during development with rust-mirror 0.4.0
+  built in; the page is the same.
 
 ## Contents
 
@@ -649,6 +654,7 @@ settings for you.
 >
 > **Not in 0.3.0:** crate retention in the app (use the CLI), Cargo.lock
 > import, git/path/alternate-registry crates, and authenticated Cargo readers.
+> The first two are in 0.4.0 (sections 12.6 and 12.7).
 
 ### 12.6 Crate retention
 
@@ -676,6 +682,15 @@ folders only; nothing on Nexus is deleted.
    mirror, or a pinned crate version that lives in it.
 
    ![Crate retention preview: one mirror to remove, two kept with reasons](screenshots/crates-12-retention-preview.png)
+
+   Below that, **Kept because they hold versions that are still needed**
+   names what protects each kept mirror: catalog crates with pinned
+   versions, and each imported Cargo.lock source (section 12.7). A lock
+   source protects the newest mirror that holds all of its versions. If no
+   finished mirror holds them yet, the preview refuses: sync a crate mirror
+   first, or remove that source.
+
+   ![Kept because of a catalog pin and three Cargo.lock sources](screenshots/crates-21-retention-lock-reasons.png)
 4. Type the phrase shown (for example `delete 1`). This enables
    **Delete N crate mirror(s)**. rust-mirror previews again just before
    deleting. If any folder changed since your preview (a new sync finished,
@@ -688,17 +703,88 @@ folders only; nothing on Nexus is deleted.
 
    ![Deleted one crate mirror: 211.7 KiB freed](screenshots/crates-14-retention-deleted.png)
 
-**Known issue (rust-mirror 0.4.0):** after a successful delete, each pruned
-run folder still holds its `plan.json`. Discover then shows it as
-"crates run: in_progress", and the next **Preview removal** refuses with
-"paused run previous generation is missing from discovery". Nothing is
-deleted. This has been reported to rust-mirror. Until it is fixed, prune
-once per workspace folder, or keep each crate sync in its own workspace
-folder.
+After a delete, Discover lists the emptied run folder as "crates run:
+pruned". You can preview and delete again in the same folder.
 
 The same steps on the command line:
 `rust-mirror crates prune --config CATALOG --directory DIR --next-previous MIRROR --as-of YYYY-MM-DD`
 does a dry run; add `--apply` to delete.
+
+### 12.7 Import Cargo.lock files
+
+*New in 0.4.0 (rust-mirror 0.5.0).* A project's `Cargo.lock` records the
+exact crates.io versions it builds with, and their checksums. Import it,
+and the mirror holds exactly those versions, so `cargo build --locked
+--offline` works on the offline network without changing the lock file.
+
+Import works on the saved catalog file. Save any unsaved catalog changes
+first.
+
+1. On **Crate catalog**, open **Cargo.lock sources**. Type a lock file's path
+   and press **Add**, or drop one or more lock files on the window. Each
+   file becomes a named **source**. The name is suggested from the project
+   folder (`service-a/Cargo.lock` becomes `service-a`); you can change it.
+2. Press **Preview import**. Nothing is written. For each file the summary
+   shows:
+   - the pinned versions it adds;
+   - skipped entries: git dependencies and local path or workspace
+     packages, with line numbers. These are not mirrored. The amber
+     warning means the offline machine needs those sources separately;
+   - problems, each with its line, column and a plain-English fix.
+
+   If any file has a problem, **nothing** is imported: leave that file out
+   with **✖**, or fix it, and preview again. Packages from another
+   registry always refuse; the registry is shown without any password from
+   its URL.
+
+   ![Import refused: vendor-app uses another registry (line 14)](screenshots/crates-15-lock-refused.png)
+
+   ![Import summary: versions added and entries skipped, with line numbers](screenshots/crates-16-lock-import-summary.png)
+3. Press **Write N source(s) to the catalog**. rust-mirror writes the
+   catalog file. The sources then appear as groups with their file, number
+   of pinned versions, import date and SHA-256.
+
+   ![Three Cargo.lock sources in the catalog](screenshots/crates-17-lock-sources.png)
+4. **When a project's lock file changes**, import it again under the same
+   name. The summary marks the source **replaced** and shows exactly which
+   versions are added or removed.
+
+   ![Re-import: memchr 2.8.3 added, 2 unchanged](screenshots/crates-18-lock-reimport-diff.png)
+5. **Remove…** next to a source previews removing it. Removing only stops
+   protecting its versions in future mirrors. Existing mirrors and their
+   files are not deleted.
+
+   ![Removal preview for legacy-tool](screenshots/crates-19-lock-remove-preview.png)
+6. On **Crate preview & sync**, **Included because** shows each version's
+   sources: "listed in catalog" for your own crates, and "Cargo.lock:" with
+   every source that needs it. The filter also matches source names. A
+   yanked version that a lock file still uses is flagged **yanked, kept for
+   a Cargo.lock**. Cargo can still use it with `--locked`.
+
+   ![Preview rows with Cargo.lock sources and a yanked version kept for legacy-tool](screenshots/crates-20-lock-preview-rows.png)
+
+Then approve and download as in section 12.2, and set up clients as in
+section 12.4.
+
+The same steps on the command line:
+`rust-mirror crates import-lock --config CATALOG --lock NAME=PATH [--lock NAME=PATH ...]`
+previews; add `--write` to save. `rust-mirror crates remove-lock --config CATALOG --source NAME`
+previews a removal; add `--write` to save.
+
+> **Tested in 0.4.0** (Linux, real crates.io):
+> - Cargo.lock import of three real projects, including git and path
+>   dependencies and a real yanked version (`memchr 2.3.1`);
+> - refusal of another registry, with the password in its URL not shown;
+> - re-import differences and removal preview;
+> - preview rows with sources;
+> - download;
+> - `cargo fetch --locked` then `cargo build --locked --offline` of two of
+>   those projects from the mirror, served by a local HTTPS test server, with
+>   the lock files unchanged;
+> - crate retention with Cargo.lock keep reasons, and deleting twice in one
+>   folder.
+>
+> **Not tested:** Windows and macOS runtime, and a real Nexus server.
 
 ---
 

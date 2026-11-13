@@ -6,29 +6,31 @@
 
 ## [0.4.0] - 2026-11-13
 
-Crate retention and Cargo.lock import. See the
+Cargo.lock import and crate retention. The built-in engine is now
+rust-mirror 0.5.0. See the
 [versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.0.md).
 
+- **Cargo.lock import** (Crate catalog page):
+  - import one or more lock files as named sources, by path or by dropping
+    them on the window; names are suggested from the project folder;
+  - an import summary before anything is written: pinned versions added,
+    removed and unchanged; skipped git and path entries with line numbers;
+    refused registries and other problems with line, column and a fix; a
+    warning when the project also needs git or path sources;
+  - re-importing a source shows exactly what changed;
+  - lock sources are listed as groups in the catalog, each with a remove
+    preview (mirrored files are never deleted);
+  - preview rows show which lock sources need each version and flag yanked
+    versions kept for a lock file; the filter matches source names.
 - **Crate retention page:** list the crate mirrors in a workspace folder;
   set the policy (next sync's previous, keep newest, previous to keep,
   pinned mirrors, as-of date) and save it in the catalog; preview the exact
-  folders and bytes to remove with every keep reason; delete only after
+  folders and bytes to remove with every keep reason, including the catalog
+  crates and Cargo.lock sources that protect a mirror; delete only after
   typing `delete N`. rust-mirror previews again before deleting and refuses
-  a stale preview. Nothing is deleted then.
-- **Cargo.lock import** (enabled with rust-mirror 0.5.0):
-  - import one or more lock files as named sources, by path or by dropping
-    them on the window;
-  - an import summary (pins added, removed and unchanged; skipped git and
-    path entries; refused registries; line-numbered problems) before
-    anything is written;
-  - lock sources listed as groups in the catalog, each with a remove preview;
-  - preview rows show which lock sources require each version, and flag
-    yanked versions kept for a lock file.
+  a stale preview, deleting nothing.
 - Deletion jobs no longer show the re-check byte count as if it were
   deletion progress.
-- Known issue (rust-mirror 0.4.0): after a crate prune, the pruned run
-  folders keep `plan.json`, and the next crate prune preview in that folder
-  refuses. Nothing is deleted. Reported upstream.
 
 ## [0.3.0] - 2026-11-13
 
