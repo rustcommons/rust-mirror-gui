@@ -15,6 +15,9 @@ pub enum Op {
     CrateSync,
     CrateExplain,
     CrateClientConfig,
+    CrateDiscover,
+    CrateRetentionPreview,
+    CrateRetentionApply,
     CheckNetwork,
     Releases,
     NetworkEnv,
@@ -195,6 +198,49 @@ pub fn crates_explain(program: &str, plan: &std::path::Path, name: &str, version
         "20".into(),
     ];
     finish(program, "Explain", a, vec![])
+}
+
+/// Crate retention preview (read-only). `catalog_json` holds the catalog with
+/// the window's `crate-retention` policy.
+pub fn crates_retention_preview(
+    program: &str,
+    catalog_json: &std::path::Path,
+    directory: &str,
+    next_previous: &str,
+    as_of: &str,
+) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates-retention-preview".into(),
+        "--catalog-json".into(),
+        catalog_json.into(),
+        "--directory".into(),
+        directory.trim().into(),
+        "--next-previous".into(),
+        next_previous.trim().into(),
+        "--as-of".into(),
+        as_of.trim().into(),
+    ];
+    let mut spec = finish(program, "Crate retention preview", a, vec![]);
+    spec.cli = Some(format!(
+        "rust-mirror crates prune --config CATALOG --directory {} --next-previous {} --as-of {} --dry-run",
+        directory.trim(),
+        next_previous.trim(),
+        as_of.trim()
+    ));
+    spec
+}
+
+/// Apply the reviewed crate prune plan.
+pub fn crates_retention_apply(program: &str, plan_file: &std::path::Path) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates-retention-apply".into(),
+        "--plan-file".into(),
+        plan_file.into(),
+        "--allow-delete".into(),
+    ];
+    let mut spec = finish(program, "Remove crate generations", a, vec![]);
+    spec.cli = Some("rust-mirror crates prune … --apply (applies the reviewed preview)".into());
+    spec
 }
 
 /// Cargo client configuration for a completed crate generation (metadata only).
@@ -460,6 +506,13 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::CratePreview, "budget") => "The preview is larger than the catalog's limits. Raise the limits under Policy or select fewer crates.",
         (Op::CratePreview, _) | (Op::CrateLoad, _) | (Op::CratePaste, _) | (Op::CrateSave, _) | (Op::CrateExplain, _) | (Op::CrateClientConfig, _) => {
             "Nothing was downloaded. Check the message above."
+        }
+        (Op::CrateDiscover, _) | (Op::CrateRetentionPreview, _) => "Nothing was deleted. Check the message above.",
+        (Op::CrateRetentionApply, "resume_mismatch") => {
+            "Nothing was deleted: the folders changed since the preview. Preview again, check it, then delete."
+        }
+        (Op::CrateRetentionApply, _) => {
+            "Deletion stopped. rust-mirror re-checks the folder before deleting, so a refusal usually means nothing was removed; if it stopped partway, removed folders stay removed. Press Discover to see what is left, fix the folder, then preview again."
         }
         (Op::CrateSync, "invalid") => "The approval did not match the saved preview. Preview again into a new folder.",
         (Op::CrateSync, "resume_mismatch") => "The catalog or previous mirror changed since the preview. Preview again into a new folder.",

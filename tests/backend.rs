@@ -358,3 +358,48 @@ fn built_in_worker_writes_and_reads_a_crate_catalog_offline() {
     assert_eq!(r["rejected"][0]["line"], 3);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn built_in_worker_crate_retention_refuses_without_deleting() {
+    let dir = std::env::temp_dir().join(format!("rmg-cret-{}", std::process::id()));
+    let ws = dir.join("ws");
+    std::fs::create_dir_all(ws.join("keep-me")).unwrap();
+    let exe = gui_exe().to_string_lossy().into_owned();
+    let catalog = dir.join("c.json");
+    std::fs::write(
+        &catalog,
+        r#"{"crates":{"anyhow":{"version":"1"}},"crate-output":{"base-url":"https://mirror.example/c/"},"crate-network":{"contact":"admin@example.org"}}"#,
+    )
+    .unwrap();
+    // The next-previous mirror is not in the folder: preview refuses.
+    let mut job = Job::start(
+        ops::crates_retention_preview(
+            &exe,
+            &catalog,
+            &ws.to_string_lossy(),
+            &ws.join("missing/mirror").to_string_lossy(),
+            "2026-11-13",
+        ),
+        || {},
+    )
+    .unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert!(
+        matches!(job.health(), Health::Failed { .. }),
+        "{:?}",
+        job.health()
+    );
+    assert!(!catalog.exists(), "the temporary catalog copy is removed");
+    // A plan the library did not produce is refused before any deletion.
+    let plan = dir.join("plan.json");
+    std::fs::write(&plan, r#"{"schema":99}"#).unwrap();
+    let mut job = Job::start(ops::crates_retention_apply(&exe, &plan), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert!(
+        matches!(job.health(), Health::Failed { .. }),
+        "{:?}",
+        job.health()
+    );
+    assert!(ws.join("keep-me").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}

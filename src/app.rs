@@ -9,6 +9,7 @@ use eframe::egui::{self, Color32, RichText};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+mod crate_retention_page;
 mod crates_page;
 mod network_page;
 
@@ -18,6 +19,7 @@ enum Page {
     Network,
     CrateCatalog,
     CrateSync,
+    CrateRetention,
     Selections,
     Plan,
     Sync,
@@ -73,6 +75,8 @@ pub struct App {
     releases: Option<serde_json::Value>,
     releases_tried: bool,
     crates: crates_page::CrateState,
+    crate_retention: crate_retention_page::CrateRetention,
+    crate_retention_pending_discover: bool,
 }
 
 impl App {
@@ -118,6 +122,8 @@ impl App {
             releases: None,
             releases_tried: false,
             crates: Default::default(),
+            crate_retention: Default::default(),
+            crate_retention_pending_discover: false,
         };
         app.check_backend(ctx);
         app
@@ -209,6 +215,7 @@ impl eframe::App for App {
                     Page::Network => self.page_network(ui, &ctx),
                     Page::CrateCatalog => self.page_crate_catalog(ui, &ctx),
                     Page::CrateSync => self.page_crate_sync(ui, &ctx),
+                    Page::CrateRetention => self.page_crate_retention(ui, &ctx),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
         });
@@ -261,6 +268,9 @@ impl App {
                         Op::Plan => Page::Plan,
                         Op::CheckNetwork | Op::NetworkEnv | Op::InspectCa => Page::Network,
                         Op::Releases => Page::Selections,
+                        Op::CrateDiscover | Op::CrateRetentionPreview | Op::CrateRetentionApply => {
+                            Page::CrateRetention
+                        }
                         Op::CrateLoad | Op::CratePaste | Op::CrateSave => Page::CrateCatalog,
                         Op::CratePreview
                         | Op::CrateSync
@@ -300,6 +310,7 @@ impl App {
         ui.add_space(8.0);
         ui.small("MANAGE");
         item(ui, Page::Generations, "Generations & retention", None);
+        item(ui, Page::CrateRetention, "Crate retention", None);
         ui.add_space(8.0);
         ui.small("DELIVER (offline network)");
         item(ui, Page::Publish, "4  Publish", None);
@@ -806,6 +817,9 @@ impl App {
             .as_ref()
             .and_then(|r| r.error.as_ref())
             .and_then(|e| e.report.clone());
+        if self.harvest_crate_retention(op, report.clone()) {
+            return;
+        }
         if self.harvest_crates(op, report.clone()) {
             return;
         }
@@ -867,7 +881,7 @@ impl App {
                         .any(|g| g.get("kind").and_then(|k| k.as_str()) == Some("crates"))
                 });
             if has_crates {
-                banner(ui, BLUE, "Crate generations are listed here, but the retention policy below applies to toolchain generations only. To preview or remove crate generations, use the command line: rust-mirror crates prune (see the tutorial).");
+                banner(ui, BLUE, "Crate generations are listed here, but the retention policy below applies to toolchain generations only. Use the Crate retention page for crate mirrors.");
             }
         }
         ui.add_space(8.0);
@@ -1301,7 +1315,9 @@ impl App {
                 human_bytes(t.completed_bytes),
                 human_bytes(expected)
             )));
-        } else if total > 0 {
+        } else if total > 0 && !matches!(op, Op::RetentionApply | Op::CrateRetentionApply) {
+            // Deletion re-checks (hashes) files before removing them, so these
+            // byte counts are not deletion progress; the log shows each delete.
             ui.add(
                 egui::ProgressBar::new(known as f32 / total as f32).text(format!(
                     "{} of {} (known sizes)",
@@ -1509,7 +1525,7 @@ impl RetentionForm {
 }
 
 /// Today's UTC date as YYYY-MM-DD (civil-from-days).
-fn today() -> String {
+pub(super) fn today() -> String {
     let days = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() / 86_400)
@@ -1527,7 +1543,7 @@ fn today() -> String {
 }
 
 /// The reviewed plan goes to the worker through a private temporary file.
-fn write_plan_file(plan: &serde_json::Value) -> Result<std::path::PathBuf, String> {
+pub(super) fn write_plan_file(plan: &serde_json::Value) -> Result<std::path::PathBuf, String> {
     let path = std::env::temp_dir().join(format!(
         "rust-mirror-gui-plan-{}-{}.json",
         std::process::id(),
@@ -1541,7 +1557,7 @@ fn write_plan_file(plan: &serde_json::Value) -> Result<std::path::PathBuf, Strin
 }
 
 /// Shows discovered generations and runs; returns completed generation paths.
-fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
+pub(super) fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
     let s = |v: &serde_json::Value, k: &str| {
         v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
     };
@@ -1627,7 +1643,7 @@ fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
 }
 
 /// Shows a retention preview; returns how many generations would be removed.
-fn show_prune_plan(ui: &mut egui::Ui, plan: &serde_json::Value) -> usize {
+pub(super) fn show_prune_plan(ui: &mut egui::Ui, plan: &serde_json::Value) -> usize {
     let s = |v: &serde_json::Value, k: &str| {
         v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
     };
