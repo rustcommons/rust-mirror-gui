@@ -322,6 +322,15 @@ Things to know:
   [test plan](plans/NO-GPU-TEST-PLAN.md). If it fails for you, note the Windows
   version and how you connected, and tell the maintainers.
 
+**The window opens but stays blank (Windows).** Some graphics drivers draw
+nothing with Vulkan (seen with an AMD Radeon RX 580 on Windows 11). From
+0.4.0 the app uses Direct3D 12 on Windows, which fixed it there. With 0.3.0,
+or to try another renderer, set the `WGPU_BACKEND` environment variable
+before starting the app, for example in PowerShell:
+`$env:WGPU_BACKEND = "dx12"; rust-mirror-gui` (other values: `vulkan`,
+`gl`). If every value stays blank, note your graphics card and Windows
+version, and tell the maintainers.
+
 **The top bar says "operation worker not working".** The app runs its operations
 in a hidden copy of itself. Open **About the engine** for the message.
 Security software may be blocking the program from starting that copy.
