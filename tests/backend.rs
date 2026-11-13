@@ -314,3 +314,47 @@ fn built_in_worker_requires_both_proxy_username_and_password() {
         job.health()
     );
 }
+
+#[test]
+fn built_in_worker_writes_and_reads_a_crate_catalog_offline() {
+    let dir = std::env::temp_dir().join(format!("rmg-crates-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let json = dir.join("c.json");
+    std::fs::write(
+        &json,
+        r#"{"crates":{"anyhow":{"version":"1"}},"crate-output":{"base-url":"https://mirror.example/c/"},"crate-network":{"contact":"admin@example.org"}}"#,
+    )
+    .unwrap();
+    let toml = dir.join("c.toml");
+    let exe = gui_exe().to_string_lossy().into_owned();
+    let mut save = Job::start(
+        ops::crates_save(&exe, &json, &toml.to_string_lossy(), false),
+        || {},
+    )
+    .unwrap();
+    wait_for(&mut save, Duration::from_secs(30), Job::finished);
+    assert_eq!(
+        save.health(),
+        Health::Succeeded,
+        "{:?}",
+        save.log.iter().map(|l| l.text.clone()).collect::<Vec<_>>()
+    );
+    let mut load = Job::start(ops::crates_load(&exe, &toml.to_string_lossy()), || {}).unwrap();
+    wait_for(&mut load, Duration::from_secs(30), Job::finished);
+    let report = load.progress.result.clone().unwrap().report.unwrap();
+    assert_eq!(report["crates"]["anyhow"]["version"], "1");
+    // Paste refuses path dependencies with a typed, line-numbered diagnostic.
+    let paste = dir.join("p.toml");
+    std::fs::write(
+        &paste,
+        "[dependencies]\nserde = \"1\"\nlocal = { path = \"../x\" }\n",
+    )
+    .unwrap();
+    let mut job = Job::start(ops::crates_paste(&exe, &paste), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    let r = job.progress.result.clone().unwrap().report.unwrap();
+    assert_eq!(r["accepted"][0], "serde");
+    assert_eq!(r["rejected"][0]["kind"], "path");
+    assert_eq!(r["rejected"][0]["line"], 3);
+    let _ = std::fs::remove_dir_all(&dir);
+}

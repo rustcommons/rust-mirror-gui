@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 /// rust-mirror library version compiled into this executable (checked by a test
 /// against Cargo.lock).
-pub const LIBRARY_VERSION: &str = "0.3.0";
+pub const LIBRARY_VERSION: &str = "0.4.0";
 
 /// Entry point; `args` are the arguments after `--worker`.
 pub fn main(args: Vec<OsString>) -> ExitCode {
@@ -31,9 +31,13 @@ pub fn main(args: Vec<OsString>) -> ExitCode {
         .unwrap_or("")
         .to_string();
     let code = match command.as_str() {
-        "plan-all" | "retention-preview" | "retention-apply" | "network-env" | "inspect-ca" => {
-            gui_command(&command, &args[1..])
-        }
+        "plan-all"
+        | "retention-preview"
+        | "retention-apply"
+        | "network-env"
+        | "inspect-ca"
+        | "crates-write"
+        | "crates-client-config" => gui_command(&command, &args[1..]),
         // Discovery is local and cheap; it takes no control input.
         "--version" | "--help" => {
             rust_mirror::cli::run_with_events(args, io::stdout(), CancelToken::new())
@@ -90,11 +94,15 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
     if control.emit(hello).is_err() {
         return 1;
     }
-    if matches!(command, "network-env" | "inspect-ca") {
-        let name = if command == "network-env" {
-            "read environment"
-        } else {
-            "read certificate file"
+    if matches!(
+        command,
+        "network-env" | "inspect-ca" | "crates-write" | "crates-client-config"
+    ) {
+        let name = match command {
+            "network-env" => "read environment",
+            "inspect-ca" => "read certificate file",
+            "crates-write" => "write catalog",
+            _ => "read crate generation",
         };
         let _ = control.emit(EventKind::Stage {
             name: name.into(),
@@ -107,6 +115,12 @@ fn gui_command(command: &str, args: &[OsString]) -> i32 {
         "network-env" => Ok(serde_json::to_value(
             rust_mirror::network::detect_environment()?,
         )?),
+        "crates-write" => crates_write(&o),
+        "crates-client-config" => Ok(json!({
+            "config": rust_mirror::crates::mirror::client_config_for_generation(
+                &o.path("--generation")?
+            )?
+        })),
         "inspect-ca" => Ok(json!({
             "certificates": rust_mirror::network::inspect_ca_file(&o.path("--file")?)?
         })),
@@ -194,6 +208,7 @@ impl Options {
                 .to_string();
             if [
                 "--allow-delete",
+                "--replace",
                 "--estimate-sizes",
                 "--proxy-from-env",
                 "--proxy-password-stdin",
@@ -300,6 +315,17 @@ fn network_options(
         n.read_timeout = std::time::Duration::from_secs(s);
     }
     Ok(n)
+}
+
+/// Validate an edited crate catalog (JSON from the window) and write it as
+/// canonical TOML through the library. Comments and key order are not kept.
+fn crates_write(o: &Options) -> Res<Value> {
+    let raw = std::fs::read(o.path("--input")?)?;
+    let catalog: rust_mirror::crates::catalog::Catalog =
+        serde_json::from_slice(&raw).map_err(|e| invalid(format!("invalid catalog: {e}")))?;
+    let output = o.path("--output")?;
+    catalog.write(&output, o.flags.iter().any(|f| f == "--replace"))?;
+    Ok(json!({ "path": output.display().to_string() }))
 }
 
 /// Resolve every selection's metadata (no payload downloads, no files written).

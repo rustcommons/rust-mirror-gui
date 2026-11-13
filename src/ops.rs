@@ -8,6 +8,13 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Plan,
+    CrateLoad,
+    CratePaste,
+    CrateSave,
+    CratePreview,
+    CrateSync,
+    CrateExplain,
+    CrateClientConfig,
     CheckNetwork,
     Releases,
     NetworkEnv,
@@ -86,6 +93,119 @@ pub fn with_network(
         };
     }
     spec.args.extend(a);
+    spec
+}
+
+/// Load a crate catalog as JSON (`crates catalog`). Local; no network.
+pub fn crates_load(program: &str, config: &str) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates".into(),
+        "catalog".into(),
+        "--config".into(),
+        config.trim().into(),
+    ];
+    finish(program, "Load crate catalog", a, vec![])
+}
+
+/// Check a pasted `[dependencies]` block (`crates paste`). Local; no network.
+pub fn crates_paste(program: &str, input: &std::path::Path) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates".into(),
+        "paste".into(),
+        "--input".into(),
+        input.into(),
+    ];
+    let mut spec = finish(program, "Check pasted dependencies", a, vec![]);
+    spec.cli = Some("rust-mirror crates paste --input FILE".into());
+    spec
+}
+
+/// Write an edited catalog (JSON) as canonical TOML through the library.
+pub fn crates_save(program: &str, json: &std::path::Path, output: &str, replace: bool) -> Spec {
+    let mut a: Vec<OsString> = vec![
+        "crates-write".into(),
+        "--input".into(),
+        json.into(),
+        "--output".into(),
+        output.trim().into(),
+    ];
+    if replace {
+        a.push("--replace".into());
+    }
+    let mut spec = finish(program, "Save crate catalog", a, vec![]);
+    spec.cli = Some(format!(
+        "(saves {}; edit the TOML file to do this by hand)",
+        output.trim()
+    ));
+    spec
+}
+
+/// `crates sync`: without `approve` it writes a frozen preview into the new
+/// output folder and returns `needs_approval`; with it, it downloads exactly
+/// that saved preview.
+pub fn crates_sync(
+    program: &str,
+    config: &str,
+    output: &str,
+    previous: &str,
+    estimate: bool,
+    approve: Option<&str>,
+    resume: bool,
+) -> Spec {
+    let mut a: Vec<OsString> = vec![
+        "crates".into(),
+        "sync".into(),
+        "--config".into(),
+        config.trim().into(),
+        "--output".into(),
+        output.trim().into(),
+    ];
+    if !previous.trim().is_empty() {
+        a.extend(["--previous".into(), previous.trim().into()]);
+    }
+    if let Some(id) = approve {
+        a.extend(["--approve-plan".into(), id.into()]);
+    }
+    if resume {
+        a.push("--resume".into());
+    }
+    if estimate && approve.is_none() {
+        a.push("--estimate-sizes".into());
+    }
+    let label = if approve.is_some() {
+        "Crate sync"
+    } else {
+        "Crate preview"
+    };
+    finish(program, label, a, vec![])
+}
+
+/// Why a crate version is included (`crates explain`). Local; no network.
+pub fn crates_explain(program: &str, plan: &std::path::Path, name: &str, version: &str) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates".into(),
+        "explain".into(),
+        "--plan".into(),
+        plan.into(),
+        "--crate".into(),
+        name.into(),
+        "--version".into(),
+        version.into(),
+        "--limit".into(),
+        "20".into(),
+    ];
+    finish(program, "Explain", a, vec![])
+}
+
+/// Cargo client configuration for a completed crate generation (metadata only).
+pub fn crates_client_config(program: &str, generation: &str) -> Spec {
+    let a: Vec<OsString> = vec![
+        "crates-client-config".into(),
+        "--generation".into(),
+        generation.trim().into(),
+    ];
+    let mut spec = finish(program, "Client setup", a, vec![]);
+    spec.cli = Some("(see docs/CRATES.md: Cargo client setup)".into());
     spec
 }
 
@@ -337,6 +457,15 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::CheckNetwork, _) => "See each step below for what failed and how to fix it.",
         (Op::Releases, _) => "The release list could not be loaded. You can still type a toolchain such as 1.90.0.",
         (Op::NetworkEnv, _) | (Op::InspectCa, _) => "Nothing was changed.",
+        (Op::CratePreview, "budget") => "The preview is larger than the catalog's limits. Raise the limits under Policy or select fewer crates.",
+        (Op::CratePreview, _) | (Op::CrateLoad, _) | (Op::CratePaste, _) | (Op::CrateSave, _) | (Op::CrateExplain, _) | (Op::CrateClientConfig, _) => {
+            "Nothing was downloaded. Check the message above."
+        }
+        (Op::CrateSync, "invalid") => "The approval did not match the saved preview. Preview again into a new folder.",
+        (Op::CrateSync, "resume_mismatch") => "The catalog or previous mirror changed since the preview. Preview again into a new folder.",
+        (Op::CrateSync, "cancelled") | (Op::CrateSync, "killed") | (Op::CrateSync, "no_result") | (Op::CrateSync, "network") => {
+            "Verified downloads are kept. Press \u{201c}Resume download\u{201d} to continue the same approved preview."
+        }
         (Op::Plan, _) => "A preview only reads metadata and writes nothing. Check the message, then preview again.",
         (_, "cancelled") | (_, "killed") | (_, "no_result") => {
             "Downloaded and verified files are kept. To continue, choose “Resume” with the same configuration, output and previous mirror, then start again."
@@ -466,5 +595,30 @@ mod tests {
         assert!(!args(&offline).contains(&"--proxy".to_string()) && offline.stdin_secret.is_none());
         let refresh = releases("gui", std::path::Path::new("/c"), true, &net, "pw");
         assert!(args(&refresh).contains(&"--proxy".to_string()) && refresh.stdin_secret.is_some());
+    }
+
+    #[test]
+    fn crate_sync_preview_then_approval() {
+        let preview = crates_sync("gui", "c.toml", "run", "", true, None, false);
+        let a = args(&preview);
+        assert!(
+            a.contains(&"--estimate-sizes".to_string())
+                && !a.contains(&"--approve-plan".to_string())
+        );
+        assert_eq!(&a[1..3], ["crates", "sync"]);
+        let approve = crates_sync(
+            "gui",
+            "c.toml",
+            "run",
+            "prev/mirror",
+            true,
+            Some("abc"),
+            true,
+        );
+        let a = args(&approve);
+        assert!(a.windows(2).any(|w| w == ["--approve-plan", "abc"]));
+        assert!(a.contains(&"--resume".to_string()) && a.contains(&"--previous".to_string()));
+        // Approval replays the frozen plan; size estimation is a preview option.
+        assert!(!a.contains(&"--estimate-sizes".to_string()));
     }
 }

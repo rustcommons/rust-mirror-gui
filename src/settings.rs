@@ -17,6 +17,10 @@ pub struct Settings {
     pub publish_ca: String,
     pub publish_user: String,
     pub generations_dir: String,
+    pub crate_catalog_path: String,
+    pub crate_output: String,
+    pub crate_previous: String,
+    pub crate_generation: String,
     /// Per-machine network settings for upstream downloads. Stored here, never
     /// in the shared mirror configuration. The proxy password is never stored.
     pub network: NetworkSettings,

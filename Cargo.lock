@@ -2905,12 +2905,14 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcfd258dce7328ce54a5096b80f6b90e550642f9bb324baf262acaa1cecf11f9"
+checksum = "c3af7381321b8dd1d780e6d519ca0a7933285165ad413bca55ce8a3efca96451"
 dependencies = [
  "hex",
+ "semver",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "toml",
@@ -2921,7 +2923,7 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror-gui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "eframe",
  "rust-mirror",
