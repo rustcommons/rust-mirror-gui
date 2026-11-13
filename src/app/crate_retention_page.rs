@@ -61,6 +61,23 @@ impl App {
             Op::CrateDiscover => {
                 r.listing = report.map(|v| v.get("catalog").cloned().unwrap_or(v));
                 r.plan = None;
+                // Drop choices that point outside the folder just listed.
+                let paths: Vec<String> = r
+                    .listing
+                    .as_ref()
+                    .and_then(|l| l.get("generations"))
+                    .and_then(Value::as_array)
+                    .map(|g| {
+                        g.iter()
+                            .filter_map(|g| g.get("path").and_then(Value::as_str))
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if !paths.contains(&r.next_previous) {
+                    r.next_previous.clear();
+                }
+                r.pinned.retain(|p| paths.contains(p));
             }
             Op::CrateRetentionPreview => {
                 r.plan = report.and_then(|v| v.get("plan").cloned());
