@@ -571,6 +571,7 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
         (Op::CratePreview, _) | (Op::CrateLoad, _) | (Op::CratePaste, _) | (Op::CrateSave, _) | (Op::CrateExplain, _) | (Op::CrateClientConfig, _) => {
             "Nothing was downloaded. Check the message above."
         }
+        (Op::CrateRetentionPreview, "invalid") => "Nothing was deleted. If the message names a Cargo.lock source, no finished crate mirror holds all of its versions yet: sync a crate mirror first, or remove that source from the catalog.",
         (Op::CrateDiscover, _) | (Op::CrateRetentionPreview, _) => "Nothing was deleted. Check the message above.",
         (Op::LockPreview, _) => "Nothing was changed. The summary below lists each problem with its line; fix or leave out those files, then preview again.",
         (Op::LockWrite, _) => "The catalog file was not changed: rust-mirror writes it all at once or not at all. Preview again.",

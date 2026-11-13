@@ -403,3 +403,79 @@ fn built_in_worker_crate_retention_refuses_without_deleting() {
     assert!(ws.join("keep-me").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn built_in_worker_previews_and_refuses_cargo_lock_imports_offline() {
+    let dir = std::env::temp_dir().join(format!("rmg-lock-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("app")).unwrap();
+    let exe = gui_exe().to_string_lossy().into_owned();
+    let catalog = dir.join("c.toml");
+    let json = dir.join("c.json");
+    std::fs::write(
+        &json,
+        r#"{"crates":{},"crate-output":{"base-url":"https://mirror.example/c/"},"crate-network":{"contact":"admin@example.org"}}"#,
+    )
+    .unwrap();
+    let mut save = Job::start(
+        ops::crates_save(&exe, &json, &catalog.to_string_lossy(), false),
+        || {},
+    )
+    .unwrap();
+    wait_for(&mut save, Duration::from_secs(30), Job::finished);
+    assert_eq!(save.health(), Health::Succeeded);
+    let lock = |source: &str| {
+        format!(
+            "version = 4\n\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\n \"itoa\",\n]\n\n[[package]]\nname = \"itoa\"\nversion = \"1.0.19\"\nsource = \"{source}\"\nchecksum = \"3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4\"\n"
+        )
+    };
+    let path = dir.join("app/Cargo.lock");
+    std::fs::write(
+        &path,
+        lock("registry+https://github.com/rust-lang/crates.io-index"),
+    )
+    .unwrap();
+    let before = std::fs::read(&catalog).unwrap();
+    let inputs = vec![("app".to_string(), path.to_string_lossy().into_owned())];
+    let mut job = Job::start(
+        ops::crates_import_lock(&exe, &catalog.to_string_lossy(), &inputs, false),
+        || {},
+    )
+    .unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    let r = job.progress.result.clone().unwrap().report.unwrap();
+    assert_eq!(r["accepted"], true);
+    assert_eq!(r["written"], false);
+    assert_eq!(r["sources"][0]["action"], "added");
+    assert_eq!(r["sources"][0]["added"][0]["name"], "itoa");
+    assert_eq!(r["sources"][0]["skipped"][0]["kind"], "local");
+    assert_eq!(
+        std::fs::read(&catalog).unwrap(),
+        before,
+        "preview writes nothing"
+    );
+    // Another registry, with credentials in its URL: refused, never echoed.
+    std::fs::write(
+        &path,
+        lock("registry+https://user:secret@registry.example.com/index"),
+    )
+    .unwrap();
+    let mut job = Job::start(
+        ops::crates_import_lock(&exe, &catalog.to_string_lossy(), &inputs, true),
+        || {},
+    )
+    .unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    let err = job.progress.result.clone().unwrap().error.unwrap();
+    let report = err.report.unwrap();
+    assert_eq!(report["accepted"], false);
+    assert_eq!(report["diagnostics"][0]["kind"], "alternate_registry");
+    assert_eq!(report["diagnostics"][0]["line"], 13);
+    let text: String = job.log.iter().map(|l| l.text.clone()).collect();
+    assert!(!text.contains("secret") && !report.to_string().contains("secret"));
+    assert_eq!(
+        std::fs::read(&catalog).unwrap(),
+        before,
+        "refusal writes nothing"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -61,6 +61,7 @@ impl App {
             Op::CrateDiscover => {
                 r.listing = report.map(|v| v.get("catalog").cloned().unwrap_or(v));
                 r.plan = None;
+                r.removed = None;
                 // Drop choices that point outside the folder just listed.
                 let paths: Vec<String> = r
                     .listing
@@ -314,6 +315,7 @@ impl App {
             ui.add_space(8.0);
             let deletion = &plan["deletion"];
             let n = show_prune_plan(ui, deletion);
+            show_keep_sources(ui, &plan);
             if n > 0 {
                 let phrase = format!("delete {n}");
                 let mut go = false;
@@ -370,5 +372,42 @@ impl App {
                 Op::CrateSave,
             ],
         );
+    }
+}
+
+/// rust-mirror 0.5.0 `keep_sources`: which catalog crates, Cargo.lock sources
+/// and pins protect each kept mirror.
+fn show_keep_sources(ui: &mut egui::Ui, plan: &Value) {
+    let rows: Vec<(String, String)> = plan
+        .get("keep_sources")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|k| {
+                    let path = k.get("path")?.as_str()?.to_string();
+                    let parts: Vec<String> = k
+                        .get("sources")?
+                        .as_array()?
+                        .iter()
+                        .map(|src| {
+                            let name = src.get("name").and_then(Value::as_str).unwrap_or("");
+                            match src.get("kind").and_then(Value::as_str) {
+                                Some("lock") => format!("Cargo.lock \u{201c}{name}\u{201d}"),
+                                Some("manual") => format!("catalog crate {name}"),
+                                _ => format!("pinned {name}"),
+                            }
+                        })
+                        .collect();
+                    (!parts.is_empty()).then(|| (path, parts.join(", ")))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if rows.is_empty() {
+        return;
+    }
+    ui.label(RichText::new("Kept because they hold versions that are still needed:").strong());
+    for (path, why) in rows {
+        ui.label(format!("   {path}: {why}"));
     }
 }

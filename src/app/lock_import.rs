@@ -40,24 +40,10 @@ fn arr(v: &Value, k: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// Whether the compiled-in rust-mirror has Cargo.lock import (0.5.0+).
-pub(super) fn supported() -> bool {
-    let mut it = crate::worker::LIBRARY_VERSION
-        .split('.')
-        .map(|p| p.parse::<u64>().unwrap_or(0));
-    let (major, minor) = (it.next().unwrap_or(0), it.next().unwrap_or(0));
-    (major, minor) >= (0, 5)
-}
-
-/// Source-name rule from docs/LOCK-IMPORT.md: 1–128 ASCII letters, digits,
-/// `_`, `-`, `.`, but not `.` or `..`.
+/// The library's source-name rule (1–128 ASCII letters, digits, `_`, `-`,
+/// `.`, but not `.` or `..`).
 pub(super) fn valid_name(name: &str) -> bool {
-    (1..=128).contains(&name.len())
-        && name != "."
-        && name != ".."
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+    rust_mirror::crates::lockfile::validate_source_name(name).is_ok()
 }
 
 /// Suggest a source name from the lock file's folder (project-a/Cargo.lock
@@ -196,15 +182,12 @@ impl App {
             .default_open(true)
             .show(ui, |ui| {
                 ui.label("Import a project's Cargo.lock to mirror exactly the crates.io versions it uses, with their checksums. Each file becomes a named source; path and git entries are skipped and reported. Nothing is downloaded until you preview and approve a mirror.");
-                if !supported() {
-                    banner(ui, AMBER, &format!("Cargo.lock import needs rust-mirror 0.5.0; this build has {}.", crate::worker::LIBRARY_VERSION));
-                }
                 let busy = self.job_running();
                 let dirty = self.crates_dirty();
                 if dirty {
                     ui.label(RichText::new("Save the catalog first: import and remove work on the saved file.").color(AMBER));
                 }
-                let usable = supported() && !busy && !dirty && !cat_path.is_empty();
+                let usable = !busy && !dirty && !cat_path.is_empty();
                 self.lock_groups(ui, ctx, program, &sources, usable, &cat_path);
                 ui.add_space(6.0);
                 self.lock_inputs(ui, ctx, program, &sources, usable, &cat_path);
@@ -483,7 +466,9 @@ fn show_report(ui: &mut egui::Ui, r: &Value) {
                 unchanged.len(),
                 skipped.len()
             ));
-            if src.get("provenance_changed") == Some(&Value::Bool(true)) {
+            if src.get("provenance_changed") == Some(&Value::Bool(true))
+                && matches!(action.as_str(), "replaced" | "unchanged")
+            {
                 ui.label(RichText::new("The file's checksum or import time changed.").weak());
             }
             for (title, pins, color) in [("Added", &added, GREEN), ("Removed", &removed, RED)] {

@@ -35,7 +35,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Compiled-in engine. Operations run in a `--worker` child process of this
 # executable, which speaks rust-mirror event protocol 1.
-rust-mirror = "0.4.0"
+rust-mirror = "0.5.0"
 
 [profile.release]
 strip = "debuginfo"

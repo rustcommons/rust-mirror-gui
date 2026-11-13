@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 /// rust-mirror library version compiled into this executable (checked by a test
 /// against Cargo.lock).
-pub const LIBRARY_VERSION: &str = "0.4.0";
+pub const LIBRARY_VERSION: &str = "0.5.0";
 
 /// Entry point; `args` are the arguments after `--worker`.
 pub fn main(args: Vec<OsString>) -> ExitCode {
