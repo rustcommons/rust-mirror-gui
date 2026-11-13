@@ -57,6 +57,20 @@ as rust-mirror's own network flags.
   without the user choosing the file and confirming.
 - Sync progress uses protocol 1's additive `transfer_summary` event.
 
+## 0.3.0: crate mirroring (owner-authorized 2026-11-13)
+
+Built on rust-mirror 0.4.0's crate contract
+([CRATES.md](https://github.com/rustcommons/rust-mirror/blob/main/docs/CRATES.md)).
+- CLI commands run through `cli::run_with_events`: `crates catalog`, `paste`,
+  `sync` (preview, then approve or resume) and `explain`.
+- Two GUI-only worker commands:
+  - `crates-write` validates the edited JSON and writes it with
+    `Catalog::write`;
+  - `crates-client-config` calls `client_config_for_generation`.
+- The window parses the additive `artifact_complete`, `crate_summary` and
+  `retry` events. Once `artifact_complete` has been seen, a file is complete
+  only when it says so, because crate downloads run concurrently.
+
 ## Original proposal
 
 Prepared 2026-11-11 against rust-mirror **0.1.1**
