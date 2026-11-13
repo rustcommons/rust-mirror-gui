@@ -89,6 +89,47 @@ pub struct TransferSummary {
     pub eta_seconds: Option<f64>,
 }
 
+/// Crate fetch (EVENTS.md crate additions): terminal success of one artifact
+/// operation. With concurrent transfers this is the only completion signal.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ArtifactComplete {
+    pub path: String,
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub bytes: Option<u64>,
+    #[serde(default)]
+    pub verified: bool,
+}
+
+/// Whole crate-fetch counters.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CrateSummary {
+    pub files_completed: u64,
+    #[serde(default)]
+    pub files_total: Option<u64>,
+    #[serde(default)]
+    pub transferred_bytes: u64,
+    #[serde(default)]
+    pub reused_bytes: u64,
+}
+
+/// Bounded retry wait (429/503/transport). Heartbeats continue meanwhile.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Retry {
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub attempt: u64,
+    #[serde(default)]
+    pub wait_seconds: u64,
+    /// `rate_limited`, `unavailable` or `transport`.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Heartbeat {
     #[serde(default)]
@@ -138,6 +179,9 @@ pub enum Event {
     Bytes(Bytes),
     Hashing(Hashing),
     TransferSummary(TransferSummary),
+    ArtifactComplete(ArtifactComplete),
+    CrateSummary(CrateSummary),
+    Retry(Retry),
     Heartbeat(Heartbeat),
     Log(Log),
     Result(Outcome),
@@ -177,6 +221,9 @@ impl Event {
             "bytes" => typed(value).map(Event::Bytes),
             "hashing" => typed(value).map(Event::Hashing),
             "transfer_summary" => typed(value).map(Event::TransferSummary),
+            "artifact_complete" => typed(value).map(Event::ArtifactComplete),
+            "crate_summary" => typed(value).map(Event::CrateSummary),
+            "retry" => typed(value).map(Event::Retry),
             "heartbeat" => typed(value).map(Event::Heartbeat),
             "log" => typed(value).map(Event::Log),
             "result" => typed(value).map(Event::Result),

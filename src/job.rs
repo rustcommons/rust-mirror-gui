@@ -132,11 +132,22 @@ pub struct Progress {
     pub current: Option<String>,
     /// Latest aggregate estimate (rust-mirror 0.3.0 `transfer_summary`).
     pub summary: Option<protocol::TransferSummary>,
+    /// Crate fetch counters (files completed of total).
+    pub crate_summary: Option<protocol::CrateSummary>,
+    /// Latest retry wait notice.
+    pub retry: Option<protocol::Retry>,
+    /// The backend reports artifact completion explicitly (concurrent
+    /// transfers), so completion must not be inferred from the next artifact.
+    pub explicit_completion: bool,
     /// Latest heartbeat: (stage, operation, path).
     pub heartbeat: Option<(String, String, Option<String>)>,
     pub result: Option<Outcome>,
     pub protocol_warnings: usize,
     pub events: u64,
+}
+
+fn short(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 fn is_network(action: &str) -> bool {
@@ -173,7 +184,11 @@ impl Progress {
             }
             Event::Artifact(a) => {
                 // A new operation implicitly ends the previous one.
-                if let Some(prev) = self.current.take().filter(|p| *p != a.path) {
+                if let Some(prev) = self
+                    .current
+                    .take()
+                    .filter(|p| *p != a.path && !self.explicit_completion)
+                {
                     if let Some(f) = self.files.get_mut(&prev) {
                         f.done = true;
                     }
@@ -206,6 +221,37 @@ impl Progress {
                 f.bytes = b.count;
                 f.total = b.total.or(f.total);
                 None
+            }
+            Event::ArtifactComplete(c) => {
+                self.explicit_completion = true;
+                let f = self.files.entry(c.path.clone()).or_default();
+                f.done = true;
+                if let Some(b) = c.bytes {
+                    f.bytes = f.bytes.max(b);
+                }
+                None
+            }
+            Event::CrateSummary(c) => {
+                self.crate_summary = Some(c.clone());
+                None
+            }
+            Event::Retry(r) => {
+                self.retry = Some(r.clone());
+                let why = match r.kind.as_str() {
+                    "rate_limited" => "the server asked us to slow down",
+                    "unavailable" => "the server is temporarily unavailable",
+                    "transport" => "the connection failed",
+                    _ => "a temporary problem",
+                };
+                Some((
+                    LogKind::Warn,
+                    format!(
+                        "waiting {} s before retry {} of {} ({why})",
+                        r.wait_seconds,
+                        r.attempt,
+                        short(&r.path)
+                    ),
+                ))
             }
             Event::TransferSummary(t) => {
                 self.summary = Some(t.clone());
@@ -694,5 +740,26 @@ mod tests {
             crate::ops::SyncMode::New,
         );
         assert_eq!(w.display(), "rust-mirror sync --config m.toml --output o");
+    }
+
+    #[test]
+    fn concurrent_crate_events_use_explicit_completion() {
+        let mut p = Progress::default();
+        for line in [
+            r#"{"type":"artifact","path":"a.crate","action":"download","offset":0,"expected_bytes":10}"#,
+            r#"{"type":"artifact","path":"b.crate","action":"download","offset":0,"expected_bytes":20}"#,
+            r#"{"type":"artifact_complete","path":"a.crate","action":"download","bytes":10,"verified":true}"#,
+            r#"{"type":"artifact","path":"c.crate","action":"download","offset":0,"expected_bytes":5}"#,
+            r#"{"type":"crate_summary","files_completed":1,"files_total":3,"transferred_bytes":10,"reused_bytes":0}"#,
+        ] {
+            p.apply(&Event::parse(line));
+        }
+        // b is still running: a new artifact must not mark it done.
+        assert!(p.files["a.crate"].done && !p.files["b.crate"].done && !p.files["c.crate"].done);
+        assert_eq!(p.crate_summary.as_ref().unwrap().files_total, Some(3));
+        let log = p.apply(&Event::parse(
+            r#"{"type":"retry","path":"cargo/crates/x/x-1.crate","attempt":2,"wait_seconds":30,"kind":"rate_limited","reason":"429"}"#,
+        ));
+        assert!(log.unwrap().1.contains("slow down"));
     }
 }

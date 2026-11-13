@@ -4,7 +4,8 @@ A desktop app for building offline Rust toolchain mirrors with
 [rust-mirror](https://crates.io/crates/rust-mirror). Use it to choose
 toolchains and platforms, preview the files, download and verify them with live
 progress, stop and resume, add the Rustup installers, and publish the result to
-Nexus Raw or another static HTTPS host.
+Nexus Raw or another static HTTPS host. It can also mirror an approved set of
+crates.io crates for offline Cargo builds.
 
 It is one executable. The rust-mirror library is compiled in. Each operation runs
 in a hidden worker copy of the same program, which reports progress to the window
@@ -15,12 +16,13 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.2.0, works on a corporate network.** It adds proxy settings
-(environment or manual, with login), company certificates for HTTPS inspection,
-a connection test, download-size estimates with percent and time left, and a
-release picker. Remote Desktop, screen readers and Windows/macOS runtime
-behavior are not yet verified; see
-[known limits](docs/releases/v0.2.0.md#validation-and-limits).
+**Status: 0.3.0, crate mirroring.** It adds a crate catalog editor (paste from
+Cargo.toml), a preview with one approval for the whole list, "why included",
+crate download with stop and resume, and Cargo client setup. It builds in
+rust-mirror 0.4.0. The 0.2.0 corporate-network features (proxy, company
+certificates, connection test, size estimates) apply to crates too. Remote
+Desktop, screen readers and Windows/macOS runtime behavior are not yet
+verified; see [known limits](docs/releases/v0.3.0.md#validation-and-limits).
 
 ## Install
 
@@ -77,16 +79,25 @@ writes to a server: use only a fresh, empty test repository.
   - Generations and retention: list, preview, then delete only after you type a
     confirmation.
   - Publish, with a no-write destination check first.
+  - Crate catalog: paste a `[dependencies]` block (each refused line is
+    explained), per-crate rules (newest N, pins, features, two ranges of one
+    crate). Saved through rust-mirror; comments and order are not kept.
+  - Crate preview & sync: one row per crate version (size, yanked/lock-only/kept
+    flags, reason), change summary, index age, budget checks, **Why?**, one
+    approval for the whole list, download with stop/resume and retry reasons,
+    and **Client setup** with the `.cargo/config.toml` snippet.
 - **Not supported:** SOCKS proxies, and proxy logins other than Basic (for
   example NTLM or Kerberos).
-- **Planned:** loading existing configurations.
+- **Not in the app yet:** crate retention (use `rust-mirror crates prune`),
+  Cargo.lock import, git/path/alternate-registry crates.
+- **Planned:** loading existing toolchain configurations.
 - **Never** activates Nexus groups, deletes remote data or changes clients.
   Credentials are passed only to the worker process and never saved.
 
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

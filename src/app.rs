@@ -9,12 +9,15 @@ use eframe::egui::{self, Color32, RichText};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+mod crates_page;
 mod network_page;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Backend,
     Network,
+    CrateCatalog,
+    CrateSync,
     Selections,
     Plan,
     Sync,
@@ -69,6 +72,7 @@ pub struct App {
     inspect_pending: bool,
     releases: Option<serde_json::Value>,
     releases_tried: bool,
+    crates: crates_page::CrateState,
 }
 
 impl App {
@@ -113,6 +117,7 @@ impl App {
             inspect_pending: false,
             releases: None,
             releases_tried: false,
+            crates: Default::default(),
         };
         app.check_backend(ctx);
         app
@@ -202,6 +207,8 @@ impl eframe::App for App {
                     Page::Sync => self.page_sync(ui, &ctx),
                     Page::Generations => self.page_generations(ui, &ctx),
                     Page::Network => self.page_network(ui, &ctx),
+                    Page::CrateCatalog => self.page_crate_catalog(ui, &ctx),
+                    Page::CrateSync => self.page_crate_sync(ui, &ctx),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
         });
@@ -254,6 +261,11 @@ impl App {
                         Op::Plan => Page::Plan,
                         Op::CheckNetwork | Op::NetworkEnv | Op::InspectCa => Page::Network,
                         Op::Releases => Page::Selections,
+                        Op::CrateLoad | Op::CratePaste | Op::CrateSave => Page::CrateCatalog,
+                        Op::CratePreview
+                        | Op::CrateSync
+                        | Op::CrateExplain
+                        | Op::CrateClientConfig => Page::CrateSync,
                         Op::Discover | Op::RetentionPreview | Op::RetentionApply => {
                             Page::Generations
                         }
@@ -281,6 +293,10 @@ impl App {
         item(ui, Page::Selections, "1  Selections", None);
         item(ui, Page::Plan, "2  Plan preview", None);
         item(ui, Page::Sync, "3  Sync & finish", None);
+        ui.add_space(8.0);
+        ui.small("CRATES (connected machine)");
+        item(ui, Page::CrateCatalog, "Crate catalog", None);
+        item(ui, Page::CrateSync, "Crate preview & sync", None);
         ui.add_space(8.0);
         ui.small("MANAGE");
         item(ui, Page::Generations, "Generations & retention", None);
@@ -776,6 +792,7 @@ impl App {
         if !job.finished() {
             return;
         }
+        let op = *op;
         self.harvested = true;
         let report = job
             .progress
@@ -789,6 +806,9 @@ impl App {
             .as_ref()
             .and_then(|r| r.error.as_ref())
             .and_then(|e| e.report.clone());
+        if self.harvest_crates(op, report.clone()) {
+            return;
+        }
         match op {
             Op::CheckNetwork => self.net_check = report.or(failure_report),
             Op::NetworkEnv => self.net_env = report,
@@ -839,6 +859,16 @@ impl App {
         if let Some(catalog) = &self.catalog {
             ui.add_space(6.0);
             choices = show_catalog(ui, catalog);
+            let has_crates = catalog
+                .get("generations")
+                .and_then(|g| g.as_array())
+                .is_some_and(|g| {
+                    g.iter()
+                        .any(|g| g.get("kind").and_then(|k| k.as_str()) == Some("crates"))
+                });
+            if has_crates {
+                banner(ui, BLUE, "Crate generations are listed here, but the retention policy below applies to toolchain generations only. To preview or remove crate generations, use the command line: rust-mirror crates prune (see the tutorial).");
+            }
         }
         ui.add_space(8.0);
         ui.label(RichText::new("Retention policy").strong());
@@ -1138,6 +1168,38 @@ impl App {
                     }
                 }
                 ui.end_row();
+                if let Some(c) = &p.crate_summary {
+                    ui.label("Crates");
+                    // transferred_bytes here is cumulative across resumes, so
+                    // only files and reused bytes are shown; the final report
+                    // gives this run's new download.
+                    ui.label(format!(
+                        "{} of {} files done · {} reused from earlier downloads",
+                        c.files_completed,
+                        c.files_total.map_or("?".to_string(), |t| t.to_string()),
+                        human_bytes(c.reused_bytes)
+                    ));
+                    ui.end_row();
+                }
+                if let Some(r) = p.retry.as_ref().filter(|_| job.exit.is_none()) {
+                    let why = match r.kind.as_str() {
+                        "rate_limited" => "crates.io asked us to slow down",
+                        "unavailable" => "the server is temporarily unavailable",
+                        "transport" => "the connection failed",
+                        _ => "a temporary problem",
+                    };
+                    ui.label("Retrying");
+                    ui.label(
+                        RichText::new(format!(
+                            "waited {} s before attempt {} for {} because {why}",
+                            r.wait_seconds,
+                            r.attempt,
+                            short_path(&r.path)
+                        ))
+                        .color(AMBER),
+                    );
+                    ui.end_row();
+                }
                 if !p.files.is_empty() {
                     ui.label("Transferred");
                     let done = p.files.values().filter(|f| f.done).count();
@@ -1161,7 +1223,11 @@ impl App {
                 {
                     // Sync nests its counters under `report`; show both levels.
                     let nested = report.get("report").and_then(|r| r.as_object());
+                    let mut seen = std::collections::BTreeSet::new();
                     for (key, value) in report.iter().chain(nested.into_iter().flatten()) {
+                        if !seen.insert(key.as_str()) {
+                            continue;
+                        }
                         let shown = match value {
                             serde_json::Value::String(s) => s.clone(),
                             serde_json::Value::Number(n) => match n.as_u64() {
@@ -1202,7 +1268,17 @@ impl App {
             .summary
             .as_ref()
             .and_then(|t| t.expected_bytes.filter(|e| *e > 0).map(|e| (t, e)));
-        if let Some((t, expected)) = summary {
+        let crate_files = job.progress.crate_summary.as_ref().and_then(|c| {
+            c.files_total
+                .filter(|t| *t > 0)
+                .map(|t| (c.files_completed, t))
+        });
+        if let Some((done, total)) = crate_files {
+            ui.add(
+                egui::ProgressBar::new((done as f32 / total as f32).min(1.0))
+                    .text(format!("{done} of {total} crate files verified")),
+            );
+        } else if let Some((t, expected)) = summary {
             // Whole-operation estimate from rust-mirror's transfer_summary.
             let fraction = (t.completed_bytes as f64 / expected as f64).min(1.0);
             let eta = match (job.exit, t.eta_seconds) {
@@ -1496,7 +1572,7 @@ fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
         .num_columns(4)
         .spacing([14.0, 3.0])
         .show(ui, |ui| {
-            for h in ["Generation", "Toolchains", "Size", "Schema"] {
+            for h in ["Generation", "Contents", "Size", "Schema"] {
                 ui.label(RichText::new(h).strong());
             }
             ui.end_row();
@@ -1504,12 +1580,26 @@ fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Vec<String> {
                 let path = s(g, "path");
                 choices.push(path.clone());
                 ui.label(RichText::new(&path).monospace());
-                let tc: Vec<String> = g
-                    .get("toolchains")
-                    .and_then(|t| t.as_array())
-                    .map(|t| t.iter().map(|r| s(r, "pinned_toolchain")).collect())
-                    .unwrap_or_default();
-                ui.label(tc.join(", "));
+                if s(g, "kind") == "crates" {
+                    // Schema-4 crate generation (rust-mirror 0.4.0 discovery).
+                    let n = |k: &str| {
+                        g.get(k)
+                            .and_then(|v| v.as_u64())
+                            .map_or("?".to_string(), |v| v.to_string())
+                    };
+                    ui.label(format!(
+                        "crates: {} crates, {} versions",
+                        n("crate_count"),
+                        n("version_count")
+                    ));
+                } else {
+                    let tc: Vec<String> = g
+                        .get("toolchains")
+                        .and_then(|t| t.as_array())
+                        .map(|t| t.iter().map(|r| s(r, "pinned_toolchain")).collect())
+                        .unwrap_or_default();
+                    ui.label(format!("toolchains: {}", tc.join(", ")));
+                }
                 ui.label(human_bytes(
                     g.get("recorded_bytes")
                         .and_then(|b| b.as_u64())

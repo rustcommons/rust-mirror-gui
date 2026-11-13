@@ -1,8 +1,8 @@
-# rust-mirror-gui tutorial (version 0.2.0)
+# rust-mirror-gui tutorial (version 0.3.0)
 
 This tutorial teaches you to build an offline Rust toolchain mirror with
-rust-mirror-gui and publish it to Nexus. It describes only what version 0.2.0
-does.
+rust-mirror-gui and publish it to Nexus, and (new in 0.3.0) mirror an approved
+set of crates.io crates. It describes only what version 0.3.0 does.
 
 **Behind a company proxy, or seeing certificate errors?** Do
 [section 11, Corporate network](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)
@@ -19,6 +19,7 @@ first.
 > 7. **Publish:** **Check destination (no writes)** first, then **Publish** into a new, empty Nexus Raw repository.
 > 8. Every page shows the matching `rust-mirror` command under **Same as**.
 > 9. Company proxy? Use **Network settings**, then **Test connection** first ([section 11](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)).
+> 10. Crates: **Crate catalog** → paste a `[dependencies]` block → **Crate preview & sync** → approve the preview once → **Client setup** ([section 12](#12-mirroring-crates)).
 
 The screenshots come from Linux, so the paths look like `/tmp/tut/demo`. On
 Windows you would use paths such as `C:\rm-demo`, and fonts and window borders
@@ -26,7 +27,8 @@ look slightly different.
 - Sections 2–7 were captured with 0.1.0. In 0.2.0 the left menu also has
   **Network settings**, Selections has a release picker, and Plan preview and
   Sync have a **Measure download sizes** option. Everything else is the same.
-- Section 11 was captured with 0.2.0.
+- Section 11 was captured with 0.2.0; section 12 with 0.3.0. From 0.3.0 the top
+  bar reads "rust-mirror 0.4.0 built in".
 
 ## Contents
 
@@ -41,6 +43,7 @@ look slightly different.
 9. [Troubleshooting](#9-troubleshooting)
 10. ["Same as": the matching command-line commands](#10-same-as-the-matching-command-line-commands)
 11. [Corporate network: proxy, company certificate, sizes and release list](#11-corporate-network-proxy-company-certificate-sizes-and-release-list)
+12. [Mirroring crates](#12-mirroring-crates)
 
 ## 1. Install and launch
 
@@ -68,7 +71,7 @@ rust-mirror-gui
   `~/.config/rust-mirror-gui/settings.json` on Linux.
 
 When the app starts, the top bar should say
-**"✔ rust-mirror 0.3.0 built in · event protocol 1"**. If it shows a red message,
+**"✔ rust-mirror 0.4.0 built in · event protocol 1"**. If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes
@@ -481,7 +484,173 @@ SHA-256 checksum.
 > test proxy, NTLM/Kerberos proxy logins (not supported; Basic only), SOCKS
 > proxies (not supported) and Windows.
 
+## 12. Mirroring crates
+
+*New in 0.3.0 (rust-mirror 0.4.0).* Mirror an organization-approved list of
+crates.io crates, with everything they depend on, so that Cargo on the offline
+network can build projects that use them. Run sections 12.1–12.4 on the
+connected machine. They use the same **Network settings** (section 11).
+
+The idea: you keep a **catalog** of approved crates. rust-mirror works out
+every crate version those need and shows the complete list as a **preview**.
+You approve that whole list once, and only then does it download.
+
+### 12.1 Build the catalog
+
+Open **Crate catalog** and press **New catalog**, or **Load** an existing
+catalog file.
+
+**Paste from Cargo.toml.** Open **Paste from Cargo.toml**, paste the lines of a
+project's `[dependencies]` section, and press **Check pasted lines**.
+rust-mirror checks every line:
+- Lines it can use are listed in green.
+- Each line it refuses shows the line and column and a fix in plain English.
+  For example: git or local-path dependencies can't be mirrored, and
+  `workspace = true` needs the real version from the workspace file.
+- Pasting a whole `Cargo.toml` is refused; paste only the `[dependencies]` lines.
+
+Nothing is added until you press **Add N usable crate(s) to the catalog**.
+
+![Paste: two usable crates, a git and a path dependency refused with line numbers](screenshots/crates-1-paste.png)
+
+**Per-crate rules.** Press **Edit** on a crate:
+
+| Field | Meaning |
+| --- | --- |
+| Versions | A Cargo version requirement, for example `1` or `>=1.2, <2` |
+| Features / Default features | The features your projects use; dependencies are worked out for these |
+| Newest versions | How many of the newest matching versions to mirror (yanked versions are skipped) |
+| Pinned versions | Exact versions always included, even outside the range |
+| Crate on crates.io | Use this to mirror two ranges of one crate: add a second name (for example `rand_old`) and set this to `rand` |
+
+![Rules for serde: newest 2 versions with the derive feature](screenshots/crates-2-rules.png)
+
+**Platforms, limits and output:**
+- **Platforms:** the hosts the crates must build for.
+- **Mirror size, download and largest-file limits.**
+- **Publish address:** where you will publish this mirror. Cargo downloads
+  crate files from exactly this address, so it must match the Publish step.
+- **Contact for crates.io:** an email or URL, sent with each request so
+  crates.io can reach you.
+- **Parallel downloads.**
+
+Press **Save catalog**. rust-mirror writes the file in its standard layout:
+**comments and the original order of entries are not kept** (the app warns
+about this before saving). The saved file also works with the command line
+(`rust-mirror crates …`).
+
+### 12.2 Preview and approve
+
+Open **Crate preview & sync**:
+1. The catalog file is filled in.
+2. **Output folder:** a new folder, for example `D:\mirrors\crates-001`.
+3. **Previous crate mirror** (optional): the last crate mirror's `mirror`
+   folder. Its versions are kept, so old lock files keep working.
+4. Tick **Measure download sizes** to see sizes before downloading.
+5. Press **Preview**. rust-mirror reads the crates.io index and saves the
+   complete list in the output folder. Nothing large is downloaded.
+
+![Preview: 12 versions with sizes, flags and the reason each is included](screenshots/crates-3-preview.png)
+
+How to read it:
+- **"8 crates, 12 versions, 22 files"**: the whole mirror. Files include the
+  index entries.
+- **"crates.io index read … ago"**: shows a warning after a day. Preview again
+  into a new folder to pick up newer versions.
+- **Size bar:** the estimated total against the catalog's size limit. Red
+  messages mean a limit would be exceeded, and approval is disabled until you
+  change the catalog.
+- **Changes since the previous mirror:** counts of added, kept, kept but now
+  yanked (old lock files still need them), and kept but no longer selected.
+- **Each row:** crate, version, size (or "unknown"), and flags:
+  - **yanked:** withdrawn on crates.io but kept;
+  - **lock-only:** only needed so Cargo can write its lock file;
+  - **kept from previous:** carried over from the previous mirror.
+
+  The **Included because** column says whether the crate is listed in the
+  catalog or which crate needs it.
+- **Why?** opens every path from your catalog to that version, with versions,
+  requirements and features. Example: `serde` with `derive` needs
+  `serde_derive`, which needs `syn 3`.
+
+![Why syn 3.0.10 is included](screenshots/crates-4-why.png)
+
+**Approve this preview and download** approves **the complete list, exactly as
+saved**. You approve once, not per crate. If you change the catalog or want
+newer versions, preview again into a new folder; the old approval doesn't carry
+over.
+
+### 12.3 Download, stop and resume
+
+While downloading, the status shows the stage, time since the last event,
+**"N of M crate files verified"** and the files in progress. Several files
+download in parallel, and each one is checked against its SHA-256 from the
+index.
+
+![Crate sync running: 120 of 181 files verified](screenshots/crates-9-sync-progress.png)
+
+Press **Stop** at any time. Verified files are kept:
+
+![Stopped at 160 of 181; verified downloads are kept](screenshots/crates-10-stopped.png)
+
+Press **Resume download** to continue **the same approved preview**. Only the
+missing files are downloaded:
+
+![Resumed: 181 of 181, 20.3 MiB reused, 8.9 MiB downloaded](screenshots/crates-11-resumed.png)
+
+If crates.io asks the app to slow down, or a connection fails, the status
+shows a **Retrying** line, for example "waited 30 s before attempt 2 … because
+crates.io asked us to slow down". The download then continues by itself.
+
+### 12.4 Client setup
+
+**Client setup** shows the exact Cargo setting for a finished crate mirror:
+
+![Client setup: the .cargo/config.toml snippet for Windows and Linux/macOS](screenshots/crates-6-client-setup.png)
+
+Add it to the project's `.cargo/config.toml`. The path is
+`<project>\.cargo\config.toml` on Windows and `<project>/.cargo/config.toml` on
+Linux/macOS. If the file already has a `[source]` section, merge them. The
+snippet is the same on every operating system. Then use
+`cargo fetch --locked` and `cargo build --locked`. The app never changes Cargo
+settings for you.
+
+### 12.5 Generations and publishing
+
+- **Generations & retention** lists crate mirrors as "crates: N crates, M
+  versions". The retention policy on that page applies to toolchain mirrors
+  only. To preview or remove crate mirrors, use the command line:
+  `rust-mirror crates prune --config CATALOG --directory DIR --next-previous MIRROR --as-of YYYY-MM-DD`.
+  It does a dry run by default.
+
+  ![Generations list showing a crate mirror](screenshots/crates-7-generations.png)
+- **Publish** works as in section 7: use the crate mirror's `mirror` folder.
+  The **Base URL must be the catalog's Publish address**. Otherwise
+  **Check destination** refuses before uploading anything, and names both
+  addresses.
+
+  ![Crate mirror published: 22 files verified](screenshots/crates-8-publish.png)
+
+> **Tested in 0.3.0** (Linux, real crates.io):
+> - catalog paste, rules and save;
+> - previews of 12 and 181 versions;
+> - "why included";
+> - download, Stop mid-download and Resume;
+> - client setup;
+> - publish to a local HTTPS test server;
+> - a real Cargo project fetching and building `--offline` from that published
+>   mirror.
+>
+> **Not tested:**
+> - a real retry wait from crates.io (the message is covered by an automated
+>   test);
+> - Windows and macOS runtime;
+> - publishing crates to a real Nexus server.
+>
+> **Not in 0.3.0:** crate retention in the app (use the CLI), Cargo.lock
+> import, git/path/alternate-registry crates, and authenticated Cargo readers.
+
 ---
 
-More: [README](../README.md) · [Roadmap](ROADMAP.md) · [Release notes 0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
+More: [README](../README.md) · [Roadmap](ROADMAP.md) · [Release notes 0.3.0](releases/v0.3.0.md) · [0.2.0](releases/v0.2.0.md) · [0.1.0](releases/v0.1.0.md) ·
 [Design](DESIGN.md) · [Changelog](../CHANGELOG.md)

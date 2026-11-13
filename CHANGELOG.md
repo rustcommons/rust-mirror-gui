@@ -2,8 +2,41 @@
 
 ## [Unreleased]
 
-- Documentation: add the 0.2.0 [publication record](docs/evals/2026-11-12-v0.2.0-publication.md)
-  and a roadmap item for using system network settings by default.
+No changes yet.
+
+## [0.3.0] - 2026-11-13
+
+Crate mirroring. The built-in engine is now rust-mirror 0.4.0. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.3.0.md).
+
+- **Crate catalog page:**
+  - load and save through the library (canonical TOML: comments and order are
+    not kept, with a warning before saving);
+  - paste a `[dependencies]` block, with per-line refusals (git, path,
+    workspace, other registry, whole manifest) and plain-English fixes;
+  - per-crate rules: version range, features, default features, newest N,
+    pins, and aliases for two ranges of one crate;
+  - platforms, size limits, publish address, contact and parallel downloads.
+- **Crate preview & sync page:**
+  - the frozen preview: one row per crate version with size or "unknown",
+    yanked, lock-only and kept-from-previous flags, and the reason it is
+    included;
+  - a change summary against the previous mirror, the index-read time with a
+    stale warning, and the library's budget flags;
+  - **Why?** paths back to the catalog;
+  - one approval for the whole preview;
+  - download with files-verified progress, Stop and Resume, and typed retry
+    reasons;
+  - **Client setup** with the `.cargo/config.toml` snippet.
+- **Generations list** labels crate mirrors with crate and version counts.
+  Crate retention stays in the CLI.
+- **Publish** accepts crate mirrors; a mismatched base URL is refused before
+  any write.
+- Uses the existing Network settings for crate downloads.
+- **Documentation:**
+  - a tutorial section "Mirroring crates", the README and these notes;
+  - the 0.2.0 [publication record](docs/evals/2026-11-12-v0.2.0-publication.md);
+  - a roadmap item for using system network settings by default.
 
 ## [0.2.0] - 2026-11-12
 
