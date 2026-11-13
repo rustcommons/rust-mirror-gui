@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 mod crate_retention_page;
 mod crates_page;
+mod lock_import;
 mod network_page;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -76,6 +77,7 @@ pub struct App {
     releases_tried: bool,
     crates: crates_page::CrateState,
     crate_retention: crate_retention_page::CrateRetention,
+    locks: lock_import::LockState,
     crate_retention_pending_discover: bool,
 }
 
@@ -123,6 +125,7 @@ impl App {
             releases_tried: false,
             crates: Default::default(),
             crate_retention: Default::default(),
+            locks: Default::default(),
             crate_retention_pending_discover: false,
         };
         app.check_backend(ctx);
@@ -271,7 +274,11 @@ impl App {
                         Op::CrateDiscover | Op::CrateRetentionPreview | Op::CrateRetentionApply => {
                             Page::CrateRetention
                         }
-                        Op::CrateLoad | Op::CratePaste | Op::CrateSave => Page::CrateCatalog,
+                        Op::CrateLoad
+                        | Op::CratePaste
+                        | Op::CrateSave
+                        | Op::LockPreview
+                        | Op::LockWrite => Page::CrateCatalog,
                         Op::CratePreview
                         | Op::CrateSync
                         | Op::CrateExplain
@@ -817,6 +824,9 @@ impl App {
             .as_ref()
             .and_then(|r| r.error.as_ref())
             .and_then(|e| e.report.clone());
+        if self.harvest_locks(op, report.clone(), failure_report.clone()) {
+            return;
+        }
         if self.harvest_crate_retention(op, report.clone()) {
             return;
         }
@@ -1524,12 +1534,18 @@ impl RetentionForm {
     }
 }
 
-/// Today's UTC date as YYYY-MM-DD (civil-from-days).
+/// Today's UTC date as YYYY-MM-DD.
 pub(super) fn today() -> String {
-    let days = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0) as i64;
+    date_of(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    )
+}
+
+/// UTC date (YYYY-MM-DD) of Unix seconds (civil-from-days).
+pub(super) fn date_of(unix_seconds: u64) -> String {
+    let days = (unix_seconds / 86_400) as i64;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

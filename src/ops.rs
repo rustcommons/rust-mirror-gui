@@ -18,6 +18,8 @@ pub enum Op {
     CrateDiscover,
     CrateRetentionPreview,
     CrateRetentionApply,
+    LockPreview,
+    LockWrite,
     CheckNetwork,
     Releases,
     NetworkEnv,
@@ -120,6 +122,68 @@ pub fn crates_paste(program: &str, input: &std::path::Path) -> Spec {
     ];
     let mut spec = finish(program, "Check pasted dependencies", a, vec![]);
     spec.cli = Some("rust-mirror crates paste --input FILE".into());
+    spec
+}
+
+/// Preview (or, with `write`, commit) importing named Cargo.lock files into a
+/// catalog (`crates import-lock`, rust-mirror 0.5.0). Local; no network.
+pub fn crates_import_lock(
+    program: &str,
+    config: &str,
+    inputs: &[(String, String)],
+    write: bool,
+) -> Spec {
+    let mut a: Vec<OsString> = vec![
+        "crates".into(),
+        "import-lock".into(),
+        "--config".into(),
+        config.trim().into(),
+    ];
+    let mut cli = format!("rust-mirror crates import-lock --config {}", config.trim());
+    for (name, path) in inputs {
+        a.push("--lock".into());
+        a.push(format!("{name}={}", path.trim()).into());
+        cli.push_str(&format!(" --lock {name}={}", path.trim()));
+    }
+    if write {
+        a.push("--write".into());
+        cli.push_str(" --write");
+    }
+    let label = if write {
+        "Import Cargo.lock into the catalog"
+    } else {
+        "Preview Cargo.lock import"
+    };
+    let mut spec = finish(program, label, a, vec![]);
+    spec.cli = Some(cli);
+    spec
+}
+
+/// Preview (or commit) removing named lock sources (`crates remove-lock`).
+pub fn crates_remove_lock(program: &str, config: &str, names: &[String], write: bool) -> Spec {
+    let mut a: Vec<OsString> = vec![
+        "crates".into(),
+        "remove-lock".into(),
+        "--config".into(),
+        config.trim().into(),
+    ];
+    let mut cli = format!("rust-mirror crates remove-lock --config {}", config.trim());
+    for n in names {
+        a.push("--source".into());
+        a.push(n.into());
+        cli.push_str(&format!(" --source {n}"));
+    }
+    if write {
+        a.push("--write".into());
+        cli.push_str(" --write");
+    }
+    let label = if write {
+        "Remove lock source from the catalog"
+    } else {
+        "Preview lock source removal"
+    };
+    let mut spec = finish(program, label, a, vec![]);
+    spec.cli = Some(cli);
     spec
 }
 
@@ -508,6 +572,8 @@ pub fn advice(op: Op, kind: &str) -> &'static str {
             "Nothing was downloaded. Check the message above."
         }
         (Op::CrateDiscover, _) | (Op::CrateRetentionPreview, _) => "Nothing was deleted. Check the message above.",
+        (Op::LockPreview, _) => "Nothing was changed. The summary below lists each problem with its line; fix or leave out those files, then preview again.",
+        (Op::LockWrite, _) => "The catalog file was not changed: rust-mirror writes it all at once or not at all. Preview again.",
         (Op::CrateRetentionApply, "resume_mismatch") => {
             "Nothing was deleted: the folders changed since the preview. Preview again, check it, then delete."
         }
@@ -673,5 +739,51 @@ mod tests {
         assert!(a.contains(&"--resume".to_string()) && a.contains(&"--previous".to_string()));
         // Approval replays the frozen plan; size estimation is a preview option.
         assert!(!a.contains(&"--estimate-sizes".to_string()));
+    }
+
+    #[test]
+    fn lock_import_and_removal_command_lines() {
+        let inputs = vec![
+            ("svc-a".to_string(), "C:\\src\\a\\Cargo.lock".to_string()),
+            ("svc-b".to_string(), "/src/b/Cargo.lock".to_string()),
+        ];
+        let spec = crates_import_lock("gui", "crates.toml", &inputs, false);
+        let a: Vec<String> = spec
+            .args
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &a[1..],
+            [
+                "crates",
+                "import-lock",
+                "--config",
+                "crates.toml",
+                "--lock",
+                "svc-a=C:\\src\\a\\Cargo.lock",
+                "--lock",
+                "svc-b=/src/b/Cargo.lock"
+            ]
+        );
+        let spec = crates_import_lock("gui", "crates.toml", &inputs, true);
+        assert_eq!(spec.args.last().unwrap(), "--write");
+        let spec = crates_remove_lock("gui", "crates.toml", &["svc-a".to_string()], false);
+        let a: Vec<String> = spec
+            .args
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &a[1..],
+            [
+                "crates",
+                "remove-lock",
+                "--config",
+                "crates.toml",
+                "--source",
+                "svc-a"
+            ]
+        );
     }
 }
