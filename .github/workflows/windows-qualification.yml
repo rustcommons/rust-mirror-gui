@@ -30,13 +30,22 @@ jobs:
           Get-CimInstance Win32_OperatingSystem | Format-List Caption, Version, BuildNumber
           Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, AdapterCompatibility
           cargo --version; rustc --version; python --version
+          (Get-Command openssl).Source
 
       - name: Build the app (release)
         run: cargo build --release --locked --bin rust-mirror-gui
 
-      - name: Private test CA (Git Bash + OpenSSL)
-        shell: bash
-        run: qualification/make-test-ca.sh "$(cygpath -u "$Q")/ca" && ls "$(cygpath -u "$Q")/ca"
+      - name: Fetch rust-mirror's HTTPS fixture helper (pinned)
+        shell: pwsh
+        run: |
+          # certificates() from rust-mirror scripts/prove_crates_https.py at
+          # 3f95e92: a disposable CA, a signed CRL served over local HTTP, and a
+          # 127.0.0.1 server certificate whose CRL distribution point names it.
+          New-Item -ItemType Directory -Force "$env:Q" | Out-Null
+          Invoke-WebRequest -Uri https://raw.githubusercontent.com/rustcommons/rust-mirror/3f95e92060f7f89257e756bef79045e85af6e848/scripts/prove_crates_https.py -OutFile "$env:Q\prove_crates_https.py"
+          $hash = (Get-FileHash "$env:Q\prove_crates_https.py").Hash
+          if ($hash -ne '6BDBDCA73223C64A014EB6A895ABB0B06BA702415671DAF07AFAC051184FBBC9') { throw "unexpected helper hash $hash" }
+          Write-Output "helper SHA-256 $hash"
 
       # One step: the runner ends a step's background processes when the step
       # ends, and the publish fixture must live through publish and the client
@@ -53,20 +62,30 @@ jobs:
           Write-Output "::add-mask::$env:QUAL_PUBLISH_PASSWORD"
           $env:FIXTURE_USER = $env:QUAL_PUBLISH_USER
           $env:FIXTURE_PASSWORD = $env:QUAL_PUBLISH_PASSWORD
-          $fixture = Start-Process python -PassThru -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\nexus", "$env:Q\ca\server.pem", "$env:Q\ca\server.key", '8443', "$env:Q\fixture.jsonl" -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
-          Start-Sleep -Seconds 3
-          $code = (Invoke-WebRequest -Uri https://127.0.0.1:8443/repository/probe -SkipCertificateCheck -SkipHttpErrorCheck).StatusCode
-          if ($code -ne 404) { throw "fixture not answering (HTTP $code)" }
+          $fx = "$env:Q\fixture"
+          $fixture = Start-Process python -PassThru -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\prove_crates_https.py", "$env:Q\nexus", '8443', $fx -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
+          $deadline = (Get-Date).AddSeconds(90)
+          while (-not (Test-Path "$fx\ready")) {
+            if ($fixture.HasExited -or (Get-Date) -gt $deadline) {
+              Get-Content "$env:Q\fixture.out", "$env:Q\fixture.err"
+              throw "fixture did not start"
+            }
+            Start-Sleep -Milliseconds 500
+          }
+          Get-Content "$env:Q\fixture.out"
 
           # The crate workflow through rust-mirror-gui --worker (release).
           $env:QUAL_DIR = "$env:Q\work"
           $env:QUAL_LOCK = "${{ github.workspace }}\qualification\demo\Cargo.lock"
-          $env:QUAL_CA_FILE = "$env:Q\ca\ca.pem"
+          $env:QUAL_CA_FILE = "$fx\ca.pem"
           cargo test --release --locked --test windows_qualification -- --ignored --nocapture
           if ($LASTEXITCODE -ne 0) { Get-Content "$env:Q\fixture.err"; exit $LASTEXITCODE }
           $env:QUAL_PUBLISH_PASSWORD = ""
 
-          # A fresh Cargo home fetches and builds offline from the published mirror.
+          # A fresh Cargo home fetches and builds offline from the published
+          # mirror. TLS and revocation checks stay on: the test CA is trusted
+          # through CARGO_HTTP_CAINFO, and the server certificate's CRL
+          # distribution point serves a signed CRL.
           $client = "$env:Q\client"
           New-Item -ItemType Directory -Force "$client\home" | Out-Null
           Copy-Item -Recurse qualification\demo "$client\demo"
@@ -75,11 +94,7 @@ jobs:
           $before = (Get-FileHash "$client\demo\Cargo.lock").Hash
           $env:CARGO_HOME = "$client\home"
           $env:CARGO_TARGET_DIR = "$client\target"
-          # Trust the private test CA. It has no revocation endpoint, so Windows'
-          # revocation check is off for this client; chain and host name are
-          # still verified.
-          $env:CARGO_HTTP_CAINFO = "$env:Q\ca\ca.pem"
-          $env:CARGO_HTTP_CHECK_REVOKE = "false"
+          $env:CARGO_HTTP_CAINFO = "$fx\ca.pem"
           Push-Location "$client\demo"
           cargo fetch --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -91,14 +106,18 @@ jobs:
           $after = (Get-FileHash "$client\demo\Cargo.lock").Hash
           if ($before -ne $after) { throw "Cargo.lock changed" }
           Write-Output "Cargo.lock unchanged: $after"
-          Stop-Process -Id $fixture.Id -Force
+
+          New-Item -ItemType File "$fx\stop" | Out-Null
+          $fixture.WaitForExit(30000) | Out-Null
+          Write-Output "CRL fetches during the run (revocation checks):"
+          Get-Content "$fx\revocation-requests.json"
 
       - name: Fixture request summary
         if: always()
         shell: pwsh
         run: |
-          if (Test-Path "$env:Q\fixture.jsonl") {
-            Get-Content "$env:Q\fixture.jsonl" | ConvertFrom-Json | Group-Object method, status | Select-Object Count, Name | Format-Table
+          if (Test-Path "$env:Q\fixture\requests.jsonl") {
+            Get-Content "$env:Q\fixture\requests.jsonl" | ConvertFrom-Json | Group-Object method, status | Select-Object Count, Name | Format-Table
           }
 
       - name: Launch the window and capture it (PrintWindow)
@@ -116,6 +135,7 @@ jobs:
             ${{ runner.temp }}\q\work\evidence.json
             ${{ runner.temp }}\q\work\crates.toml
             ${{ runner.temp }}\q\work\cargo-config.toml
-            ${{ runner.temp }}\q\fixture.jsonl
+            ${{ runner.temp }}\q\fixture\requests.jsonl
+            ${{ runner.temp }}\q\fixture\revocation-requests.json
             ${{ runner.temp }}\q\shots
           if-no-files-found: warn
