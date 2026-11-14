@@ -1,12 +1,16 @@
 name: Remote Desktop qualification
 
-# Runs rust-mirror-gui inside a genuine RDP session on a disposable Windows
-# runner (loopback RDP to 127.0.0.2, FreeRDP client), with no GPU.
-# Evidence: docs/evals/*-remote-desktop.md. Plan: docs/plans/NO-GPU-TEST-PLAN.md.
+# rust-mirror-gui inside a genuine RDP session on a disposable Windows runner
+# with no GPU: loopback RDP to 127.0.0.2 with the FreeRDP client, a temporary
+# local user, and the app driven and captured from inside the session.
+# Scenarios and evidence: docs/evals/2026-11-14-remote-desktop.md.
+# Plan: docs/plans/NO-GPU-TEST-PLAN.md.
 on:
   workflow_dispatch:
-  push:
-    branches: [ci/remote-desktop]
+  pull_request:
+    paths:
+      - .github/workflows/remote-desktop.yml
+      - qualification/rdp/**
 permissions:
   contents: read
 jobs:
@@ -16,16 +20,25 @@ jobs:
       matrix:
         os: [windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.95.0
-      - name: Build the app (release)
-        run: cargo build --release --locked --bin rust-mirror-gui
-      - name: Probe loopback RDP
+      - name: Build the 0.4.1 release for comparison
         shell: pwsh
-        run: ./qualification/rdp/probe.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\rust-mirror-gui.exe" -Out "$env:RUNNER_TEMP\rdp"
-      - name: Clean up the test user and session
+        run: |
+          git worktree add "$env:RUNNER_TEMP\v041" v0.4.1
+          cargo build --release --locked --bin rust-mirror-gui --manifest-path "$env:RUNNER_TEMP\v041\Cargo.toml" --target-dir target
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\v041-bin" | Out-Null
+          Copy-Item target\release\rust-mirror-gui.exe "$env:RUNNER_TEMP\v041-bin\rust-mirror-gui.exe"
+      - name: Build this version (release)
+        run: cargo build --release --locked --bin rust-mirror-gui
+      - name: Remote Desktop scenarios
+        shell: pwsh
+        run: ./qualification/rdp/rdp-qualify.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\rust-mirror-gui.exe" -OldExe "$env:RUNNER_TEMP\v041-bin\rust-mirror-gui.exe" -Out "$env:RUNNER_TEMP\rdp"
+      - name: Remove the test user, sessions and files
         if: always()
         shell: pwsh
         run: ./qualification/rdp/cleanup.ps1

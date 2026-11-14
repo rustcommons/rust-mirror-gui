@@ -162,8 +162,12 @@ impl App {
 
     fn start(&mut self, ctx: &egui::Context, op: Op, spec: crate::job::Spec) {
         self.start_error = None;
-        let wake = ctx.clone();
-        match Job::start(spec, move || wake.request_repaint()) {
+        // Worker output is not pushed to the window: while a job runs, the
+        // window redraws on a fixed timer (`JOB_REPAINT_INTERVAL`) and reads
+        // new output then. Redrawing on every line kept a software renderer
+        // (Remote Desktop, no GPU) busy on several cores during a crate sync.
+        let _ = ctx;
+        match Job::start(spec, || {}) {
             Ok(job) => {
                 self.job = Some((op, job));
                 self.harvested = false;
@@ -213,7 +217,7 @@ impl App {
         }
         self.harvest();
         if self.job_running() || matches!(self.backend, Backend::Checking(_)) {
-            ctx.request_repaint_after(Duration::from_millis(250));
+            ctx.request_repaint_after(JOB_REPAINT_INTERVAL);
         }
         self.persist(false);
 
@@ -253,6 +257,9 @@ impl App {
         });
     }
 }
+
+/// How often the window redraws while a job runs (status, progress, log).
+const JOB_REPAINT_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Room left on the monitor for a taskbar and the window's title bar and
 /// borders (points). The work area itself is not available to the app.
@@ -1216,9 +1223,13 @@ impl App {
             .min_col_width(110.0)
             .show(ui, |ui| {
                 // Keys fit the first column; values (the last column) wrap.
+                // The first value claims the full width, so the column does not
+                // change size as the text changes: egui repaints once more
+                // whenever a grid's size changes, and with new worker output on
+                // every frame that kept the window redrawing continuously.
                 let p = &job.progress;
                 ui.label("Stage");
-                ui.label(match &p.stage {
+                let stage = match &p.stage {
                     Some(s) => {
                         let n = match (s.index, s.total) {
                             (Some(i), Some(t)) => format!("  ({i} of {t})"),
@@ -1234,6 +1245,10 @@ impl App {
                         )
                     }
                     None => "waiting for the first event".into(),
+                };
+                ui.vertical(|ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.label(stage);
                 });
                 ui.end_row();
                 ui.label("Last event");
@@ -1465,36 +1480,32 @@ impl App {
             .collect();
         if !active.is_empty() {
             ui.label(RichText::new("Current files").strong());
-            egui::Grid::new("files")
-                .num_columns(3)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    // Table cells keep their width; long cells wrap explicitly.
-                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    for (path, f) in active {
-                        ui.label(&f.action);
-                        ui.label(RichText::new(short_path(path)).monospace());
-                        match (f.hashing, f.total) {
-                            (Some((c, Some(t))), _) if t > 0 => ui.add(
-                                egui::ProgressBar::new(c.min(t) as f32 / t as f32)
-                                    .desired_width(220.0)
-                                    .text(format!(
-                                        "hashing {} / {}",
-                                        human_bytes(c),
-                                        human_bytes(t)
-                                    )),
-                            ),
-                            (Some((c, _)), _) => ui.label(format!("hashing {}", human_bytes(c))),
-                            (None, Some(t)) if t > 0 => ui.add(
-                                egui::ProgressBar::new(f.bytes.min(t) as f32 / t as f32)
-                                    .desired_width(220.0)
-                                    .text(format!("{} / {}", human_bytes(f.bytes), human_bytes(t))),
-                            ),
-                            (None, _) => ui.label(human_bytes(f.bytes)),
-                        };
-                        ui.end_row();
-                    }
+            // Fixed column widths (not a Grid): the paths and byte counts
+            // change on every frame, and a resizing grid triggers extra repaints.
+            for (path, f) in active {
+                ui.horizontal(|ui| {
+                    fixed_cell(ui, 80.0, f.action.clone().into());
+                    fixed_cell(
+                        ui,
+                        300.0,
+                        RichText::new(short_path(path)).monospace().into(),
+                    );
+                    match (f.hashing, f.total) {
+                        (Some((c, Some(t))), _) if t > 0 => ui.add(
+                            egui::ProgressBar::new(c.min(t) as f32 / t as f32)
+                                .desired_width(220.0)
+                                .text(format!("hashing {} / {}", human_bytes(c), human_bytes(t))),
+                        ),
+                        (Some((c, _)), _) => ui.label(format!("hashing {}", human_bytes(c))),
+                        (None, Some(t)) if t > 0 => ui.add(
+                            egui::ProgressBar::new(f.bytes.min(t) as f32 / t as f32)
+                                .desired_width(220.0)
+                                .text(format!("{} / {}", human_bytes(f.bytes), human_bytes(t))),
+                        ),
+                        (None, _) => ui.label(human_bytes(f.bytes)),
+                    };
                 });
+            }
         }
 
         ui.horizontal(|ui| {
@@ -1507,17 +1518,27 @@ impl App {
             .corner_radius(6)
             .inner_margin(8)
             .show(ui, |ui| {
-                egui::ScrollArea::vertical()
+                // One unwrapped line per entry, so only the visible lines are
+                // laid out each frame (the log keeps up to 2,000 lines). Long
+                // lines scroll sideways inside the box.
+                let lines: Vec<&crate::job::LogLine> = job
+                    .log
+                    .iter()
+                    .filter(|l| show_stderr || l.kind != LogKind::Stderr)
+                    .collect();
+                let row_h = ui.text_style_height(&egui::TextStyle::Monospace);
+                egui::ScrollArea::both()
                     .id_salt("activity")
+                    // Following new lines without a smooth-scroll animation:
+                    // the animation repainted every frame while lines kept
+                    // arriving, which is costly with software rendering.
+                    .animated(false)
                     .max_height(260.0)
                     .stick_to_bottom(true)
                     .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        for line in job
-                            .log
-                            .iter()
-                            .filter(|l| show_stderr || l.kind != LogKind::Stderr)
-                        {
+                    .show_rows(ui, row_h, lines.len(), |ui, range| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        for line in &lines[range] {
                             let color = match line.kind {
                                 LogKind::Stage => Color32::from_rgb(121, 192, 255),
                                 LogKind::Artifact => Color32::from_rgb(126, 231, 135),
@@ -2028,6 +2049,20 @@ fn banner(ui: &mut egui::Ui, color: Color32, text: &str) {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(text).color(color));
         });
+}
+
+/// A left-aligned, one-line cell of fixed width; longer text ends in "…".
+fn fixed_cell(ui: &mut egui::Ui, width: f32, text: egui::WidgetText) -> egui::Response {
+    let height = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(
+        egui::vec2(width, height),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_width(width);
+            ui.add(egui::Label::new(text).truncate())
+        },
+    )
+    .inner
 }
 
 /// Labelled single-line field; the label is linked for screen readers.
