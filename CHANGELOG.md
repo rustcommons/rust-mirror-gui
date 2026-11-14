@@ -6,6 +6,7 @@
 - Documentation: add the 0.4.0 [publication record](docs/evals/2026-11-13-v0.4.0-publication.md), the
   Windows renderer finding in the [0.4.0 validation record](docs/evals/2026-11-13-v0.4.0-validation.md),
   and a tutorial troubleshooting entry for a blank window on Windows.
+- Documentation: add the 0.4.1 [publication record](docs/evals/2026-11-14-v0.4.1-publication.md).
 - Testing: a repeatable Windows qualification workflow runs the crate
   workflow end to end through the app's worker (paste, Cargo.lock import,
   preview, approval, hard kill and resume, retention preview, Client setup,
