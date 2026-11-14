@@ -28,7 +28,8 @@ Write-Output "WGPU_BACKEND: '$env:WGPU_BACKEND' (empty means the app's Windows d
 
 $proc = Start-Process -FilePath $Exe -PassThru
 $deadline = (Get-Date).AddSeconds(60)
-while ($proc.MainWindowHandle -eq [IntPtr]::Zero) {
+# Wait for the app's own window (title "rust-mirror GUI"), not a helper window.
+while ($proc.MainWindowHandle -eq [IntPtr]::Zero -or $proc.MainWindowTitle -notlike 'rust-mirror*') {
     if ($proc.HasExited) { throw "the app exited with code $($proc.ExitCode) before showing a window" }
     if ((Get-Date) -gt $deadline) { throw "no window after 60 s" }
     Start-Sleep -Milliseconds 500

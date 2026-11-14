@@ -34,11 +34,14 @@ jobs:
       - name: Build the app (release)
         run: cargo build --release --locked --bin rust-mirror-gui
 
-      - name: Private test CA and publish fixture
+      - name: Private test CA (Git Bash + OpenSSL)
+        shell: bash
+        run: qualification/make-test-ca.sh "$(cygpath -u "$Q")/ca" && ls "$(cygpath -u "$Q")/ca"
+
+      - name: Publish fixture
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "$env:Q\nexus" | Out-Null
-          bash qualification/make-test-ca.sh "$($env:Q -replace '\\','/')/ca"
           $user = "qual"
           $pass = [guid]::NewGuid().ToString("N")
           Write-Output "::add-mask::$pass"
@@ -49,6 +52,9 @@ jobs:
           Start-Process python -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\nexus", "$env:Q\ca\server.pem", "$env:Q\ca\server.key", '8443', "$env:Q\fixture.jsonl" -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
           Start-Sleep -Seconds 3
           Get-Content "$env:Q\fixture.out", "$env:Q\fixture.err"
+          $code = (Invoke-WebRequest -Uri https://127.0.0.1:8443/repository/probe -SkipCertificateCheck -SkipHttpErrorCheck).StatusCode
+          if ($code -ne 404) { throw "fixture not answering (HTTP $code)" }
+          Write-Output "fixture answers HEAD/GET for a missing path with 404"
 
       - name: Crate workflow through the worker (real crates.io)
         shell: pwsh
