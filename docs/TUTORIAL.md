@@ -315,9 +315,11 @@ Things to know:
 **The window does not open.**
 - Linux: install the graphics packages from [section 1](#1-install-and-launch).
   With no Vulkan or OpenGL driver at all, the window can't be created.
-- Windows over **Remote Desktop**, and computers **without a GPU**, have **not
-  been tested** with 0.1.0. A native Windows 11 launch has been checked. Testing
-  without a GPU and over Remote Desktop is deferred; see the
+- Windows over **Remote Desktop** has **not been tested**. Native Windows 11
+  launches have been checked. On Windows Server 2025 **without a GPU**, 0.4.0
+  opens and draws its first screen with Direct3D 12 on WARP, Windows' software
+  renderer ([Windows qualification](evals/2026-11-14-windows-qualification.md));
+  using it there, and Remote Desktop, are still untested. See the
   [roadmap](ROADMAP.md#deferred-qualification) and its
   [test plan](plans/NO-GPU-TEST-PLAN.md). If it fails for you, note the Windows
   version and how you connected, and tell the maintainers.
