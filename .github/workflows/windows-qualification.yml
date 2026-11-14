@@ -38,38 +38,35 @@ jobs:
         shell: bash
         run: qualification/make-test-ca.sh "$(cygpath -u "$Q")/ca" && ls "$(cygpath -u "$Q")/ca"
 
-      - name: Publish fixture
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force "$env:Q\nexus" | Out-Null
-          $user = "qual"
-          $pass = [guid]::NewGuid().ToString("N")
-          Write-Output "::add-mask::$pass"
-          "QUAL_PUBLISH_USER=$user" >> $env:GITHUB_ENV
-          "QUAL_PUBLISH_PASSWORD=$pass" >> $env:GITHUB_ENV
-          $env:FIXTURE_USER = $user
-          $env:FIXTURE_PASSWORD = $pass
-          Start-Process python -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\nexus", "$env:Q\ca\server.pem", "$env:Q\ca\server.key", '8443', "$env:Q\fixture.jsonl" -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
-          Start-Sleep -Seconds 3
-          Get-Content "$env:Q\fixture.out", "$env:Q\fixture.err"
-          $code = (Invoke-WebRequest -Uri https://127.0.0.1:8443/repository/probe -SkipCertificateCheck -SkipHttpErrorCheck).StatusCode
-          if ($code -ne 404) { throw "fixture not answering (HTTP $code)" }
-          Write-Output "fixture answers HEAD/GET for a missing path with 404"
-
-      - name: Crate workflow through the worker (real crates.io)
+      # One step: the runner ends a step's background processes when the step
+      # ends, and the publish fixture must live through publish and the client
+      # build.
+      - name: Crate workflow through the worker, publish, offline client build
         shell: pwsh
         env:
           QUAL_PUBLISH_URL: https://127.0.0.1:8443/repository/crates-qual/
         run: |
+          # Publish fixture (local HTTPS stand-in for a Nexus raw repository).
+          New-Item -ItemType Directory -Force "$env:Q\nexus" | Out-Null
+          $env:QUAL_PUBLISH_USER = "qual"
+          $env:QUAL_PUBLISH_PASSWORD = [guid]::NewGuid().ToString("N")
+          Write-Output "::add-mask::$env:QUAL_PUBLISH_PASSWORD"
+          $env:FIXTURE_USER = $env:QUAL_PUBLISH_USER
+          $env:FIXTURE_PASSWORD = $env:QUAL_PUBLISH_PASSWORD
+          $fixture = Start-Process python -PassThru -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\nexus", "$env:Q\ca\server.pem", "$env:Q\ca\server.key", '8443', "$env:Q\fixture.jsonl" -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
+          Start-Sleep -Seconds 3
+          $code = (Invoke-WebRequest -Uri https://127.0.0.1:8443/repository/probe -SkipCertificateCheck -SkipHttpErrorCheck).StatusCode
+          if ($code -ne 404) { throw "fixture not answering (HTTP $code)" }
+
+          # The crate workflow through rust-mirror-gui --worker (release).
           $env:QUAL_DIR = "$env:Q\work"
           $env:QUAL_LOCK = "${{ github.workspace }}\qualification\demo\Cargo.lock"
           $env:QUAL_CA_FILE = "$env:Q\ca\ca.pem"
           cargo test --release --locked --test windows_qualification -- --ignored --nocapture
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:Q\fixture.err"; exit $LASTEXITCODE }
+          $env:QUAL_PUBLISH_PASSWORD = ""
 
-      - name: Fresh Cargo home fetches and builds offline from the published mirror
-        shell: pwsh
-        run: |
+          # A fresh Cargo home fetches and builds offline from the published mirror.
           $client = "$env:Q\client"
           New-Item -ItemType Directory -Force "$client\home" | Out-Null
           Copy-Item -Recurse qualification\demo "$client\demo"
@@ -94,6 +91,7 @@ jobs:
           $after = (Get-FileHash "$client\demo\Cargo.lock").Hash
           if ($before -ne $after) { throw "Cargo.lock changed" }
           Write-Output "Cargo.lock unchanged: $after"
+          Stop-Process -Id $fixture.Id -Force
 
       - name: Fixture request summary
         if: always()
