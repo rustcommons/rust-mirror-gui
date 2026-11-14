@@ -1,0 +1,37 @@
+name: Remote Desktop qualification
+
+# Runs rust-mirror-gui inside a genuine RDP session on a disposable Windows
+# runner (loopback RDP to 127.0.0.2, FreeRDP client), with no GPU.
+# Evidence: docs/evals/*-remote-desktop.md. Plan: docs/plans/NO-GPU-TEST-PLAN.md.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/remote-desktop]
+permissions:
+  contents: read
+jobs:
+  rdp:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - name: Build the app (release)
+        run: cargo build --release --locked --bin rust-mirror-gui
+      - name: Probe loopback RDP
+        shell: pwsh
+        run: ./qualification/rdp/probe.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\rust-mirror-gui.exe" -Out "$env:RUNNER_TEMP\rdp"
+      - name: Clean up the test user and session
+        if: always()
+        shell: pwsh
+        run: ./qualification/rdp/cleanup.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rdp-${{ matrix.os }}
+          path: ${{ runner.temp }}/rdp
+          if-no-files-found: warn
