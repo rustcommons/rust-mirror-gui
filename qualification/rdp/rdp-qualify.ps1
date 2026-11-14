@@ -64,14 +64,17 @@ $cert = Get-ChildItem 'Cert:\LocalMachine\Remote Desktop' | Select-Object -First
 $fp = (([System.Security.Cryptography.SHA256]::Create().ComputeHash($cert.RawData)) | ForEach-Object { $_.ToString('x2') }) -join ':'
 Log "RDP server certificate $($cert.Subject), pinned SHA-256 $fp"
 
-# Data for the sync: a 181-version crate catalog, one download at a time.
+# Data for the sync: a catalog of about 290 crate versions (about 46 MiB),
+# one download at a time, so a sync lasts long enough to stop and disconnect.
 @'
 {"crates":{"tokio":{"version":"1","features":["full"],"default-features":true,"optional":false},
  "reqwest":{"version":"0.12","features":[],"default-features":true,"optional":false},
  "clap":{"version":"4","features":["derive"],"default-features":true,"optional":false},
  "regex":{"version":"1","features":[],"default-features":true,"optional":false},
  "serde":{"version":"1","features":["derive"],"default-features":true,"optional":false},
- "anyhow":{"version":"1","features":[],"default-features":true,"optional":false}},
+ "anyhow":{"version":"1","features":[],"default-features":true,"optional":false},
+ "aws-sdk-s3":{"version":"1","features":[],"default-features":true,"optional":false},
+ "aws-config":{"version":"1","features":[],"default-features":true,"optional":false}},
  "crate-rules":{},
  "crate-policy":{"features":"declared","resolver":"2","hosts":["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu"],"targets":["x86_64-pc-windows-msvc","x86_64-unknown-linux-gnu"],
   "max-versions":3000,"max-files":10000,"max-metadata-bytes":268435456,"max-file-bytes":536870912,"max-final-bytes":10737418240,"max-transfer-bytes":10737418240},
@@ -142,8 +145,10 @@ function Wait-Text([string]$pattern, [int]$seconds) {
 }
 function Files-Done {
     $t = In 'texts'
-    $hit = @($t.names | Where-Object { $_ -match '(\d+) of (\d+) files done' }) | Select-Object -First 1
-    if ($hit -and $hit -match '(\d+) of (\d+) files done') { return [int]$Matches[1] }
+    foreach ($pattern in '(\d+) of (\d+) files done', '(\d+) of (\d+) crate files verified') {
+        $hit = @($t.names | Where-Object { $_ -match $pattern }) | Select-Object -First 1
+        if ($hit -and $hit -match $pattern) { return [int]$Matches[1] }
+    }
     -1
 }
 function Settings([string]$run) {
@@ -186,12 +191,10 @@ Record 'idle-cpu-and-memory' ($idle.gui_cpu_pct -lt 3 -and $idle.gui_working_set
 # apart; the window itself redraws every 0.5 s while a job runs.
 $samples = @()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-for ($i = 0; $i -lt 5; $i++) { $samples += [ordered]@{ t_s = [math]::Round($sw.Elapsed.TotalSeconds, 1); files_done = (Files-Done) } }
+for ($i = 0; $i -lt 4; $i++) { $samples += [ordered]@{ t_s = [math]::Round($sw.Elapsed.TotalSeconds, 1); files_done = (Files-Done) } }
 $increasing = ($samples | ForEach-Object { $_.files_done } | Where-Object { $_ -ge 0 } | Select-Object -Unique).Count -ge 3
 [void](In 'capture' @{ name = '03-downloading' })
 Record 'live-status-updates' $increasing @{ samples = $samples; preview = $p }
-$active = In 'cpu' @{ seconds = 8 }
-Record 'cpu-during-sync' ($active.gui_cpu_pct -lt 25) $active
 [void](In 'invoke' @{ name = 'Stop' })
 $stopped = Wait-Text 'Stopped: operation cancelled' 30
 [void](In 'capture' @{ name = '04-stopped' })
@@ -234,6 +237,8 @@ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class Show { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); }
 "@
+$active = In 'cpu' @{ seconds = 8 }
+Record 'cpu-during-sync' ($active.gui_cpu_pct -lt 25) $active
 $h = (Get-Process wfreerdp | Select-Object -First 1).MainWindowHandle
 [void][Show]::ShowWindow($h, 6)   # SW_MINIMIZE
 Log "RDP client minimized"
@@ -262,8 +267,12 @@ if ($OldExe) {
 
 # 8. Start on the console, then take over through RDP.
 $sid = Session-Id
-tscon $sid /dest:console /password:$pw
+# tscon to the console needs SYSTEM; run it from a one-off SYSTEM task.
+$t = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c tscon $sid /dest:console > C:\rdpqual\out\tscon.txt 2>&1"
+Register-ScheduledTask -TaskName rdpqual-tscon -Action $t -User 'SYSTEM' -RunLevel Highest | Out-Null
+Start-ScheduledTask -TaskName rdpqual-tscon
 Start-Sleep -Seconds 8
+Log "tscon: $((Get-Content C:\rdpqual\out\tscon.txt -ErrorAction SilentlyContinue) -join ' ') (task result $((Get-ScheduledTaskInfo rdpqual-tscon).LastTaskResult))"
 $state = Session-State
 $c1 = In 'capture' @{ name = '09-on-console' }
 Log "on console: $state"

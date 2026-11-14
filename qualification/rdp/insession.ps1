@@ -77,6 +77,7 @@ try {
             $dir = Join-Path $env:APPDATA 'rust-mirror-gui'
             New-Item -ItemType Directory -Force $dir | Out-Null
             ($cmd.settings | ConvertTo-Json -Compress) | Set-Content (Join-Path $dir 'settings.json')
+            $env:RUST_MIRROR_GUI_FRAME_LOG = "C:\rdpqual\out\frames-$($cmd.id).log"
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $p = Start-Process -FilePath $cmd.exe -PassThru
             while ($p.MainWindowHandle -eq [IntPtr]::Zero -or $p.MainWindowTitle -notlike 'rust-mirror*') {

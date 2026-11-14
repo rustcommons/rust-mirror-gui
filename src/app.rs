@@ -83,6 +83,8 @@ pub struct App {
     last_page_extent: Option<(egui::Vec2, egui::Rect)>,
     /// The first window has been fitted to its monitor.
     window_fitted: bool,
+    /// Optional per-second redraw statistics (`RUST_MIRROR_GUI_FRAME_LOG`).
+    frame_log: Option<FrameLog>,
 }
 
 impl App {
@@ -138,6 +140,7 @@ impl App {
             crate_retention_pending_discover: false,
             last_page_extent: None,
             window_fitted: false,
+            frame_log: std::env::var_os("RUST_MIRROR_GUI_FRAME_LOG").map(FrameLog::new),
         }
     }
 
@@ -203,6 +206,9 @@ impl eframe::App for App {
 impl App {
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        if let Some(log) = &mut self.frame_log {
+            log.frame(&ctx);
+        }
         self.fit_window_to_monitor(&ctx);
         if let Backend::Checking(rx) = &self.backend {
             if let Ok(result) = rx.try_recv() {
@@ -254,6 +260,68 @@ impl App {
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
             self.last_page_extent = Some((out.content_size, out.inner_rect));
+        });
+    }
+}
+
+/// Diagnostics: when `RUST_MIRROR_GUI_FRAME_LOG` names a file, append one
+/// line per second with the number of redraws, what requested them and the
+/// input events seen. For finding out why the window redraws (CPU use).
+struct FrameLog {
+    path: std::ffi::OsString,
+    second: u64,
+    frames: u32,
+    causes: std::collections::BTreeMap<String, u32>,
+    events: std::collections::BTreeMap<String, u32>,
+}
+
+impl FrameLog {
+    fn new(path: std::ffi::OsString) -> Self {
+        Self {
+            path,
+            second: 0,
+            frames: 0,
+            causes: Default::default(),
+            events: Default::default(),
+        }
+    }
+
+    fn frame(&mut self, ctx: &egui::Context) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        if now != self.second && self.frames > 0 {
+            let line = format!(
+                "{} frames={} causes={:?} events={:?}\n",
+                self.second, self.frames, self.causes, self.events
+            );
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+            self.frames = 0;
+            self.causes.clear();
+            self.events.clear();
+        }
+        self.second = now;
+        self.frames += 1;
+        for cause in ctx.repaint_causes() {
+            let text = cause.to_string();
+            let short = text
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&text)
+                .trim()
+                .to_string();
+            *self.causes.entry(short).or_default() += 1;
+        }
+        ctx.input(|i| {
+            for e in &i.raw.events {
+                let name = format!("{e:?}");
+                let kind: String = name.chars().take_while(|c| c.is_alphanumeric()).collect();
+                *self.events.entry(kind).or_default() += 1;
+            }
         });
     }
 }
