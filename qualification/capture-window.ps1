@@ -10,7 +10,7 @@ param(
     [int]$WaitSeconds = 15
 )
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Drawing, System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -41,7 +41,16 @@ Start-Sleep -Seconds $WaitSeconds
 $proc.Refresh()
 if ($proc.HasExited) { throw "the app exited with code $($proc.ExitCode) after showing its window" }
 
+# Which renderer the process actually loaded (no code changes needed):
+# d3d10warp.dll is Windows' software rasterizer (WARP) behind Direct3D.
+$gfx = $proc.Modules | Where-Object { $_.ModuleName -match '^(d3d12|d3d12core|d3d11|dxgi|d3d10warp|vulkan-1|opengl32|nvwgf2umx|nvoglv64|amdxc64|aticfx64|igd12umd64|igd10iumd64)\.dll$' } | ForEach-Object { $_.ModuleName }
+Write-Output "Graphics modules loaded: $(($gfx | Sort-Object) -join ', ')"
+if ($gfx -contains 'd3d10warp.dll') { Write-Output "Renderer: Direct3D 12 on WARP (software)" }
+
 $rect = New-Object Win+RECT
+[void][Win]::GetWindowRect($hwnd, [ref]$rect)
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+Write-Output "Primary screen $($screen.Width)x$($screen.Height)"
 [void][Win]::GetWindowRect($hwnd, [ref]$rect)
 $w = $rect.Right - $rect.Left
 $h = $rect.Bottom - $rect.Top
