@@ -29,6 +29,8 @@ pub(super) fn show_certificates(ui: &mut egui::Ui, id: &str, certs: &[Value]) {
         .num_columns(2)
         .spacing([12.0, 2.0])
         .show(ui, |ui| {
+            // Table cells keep their width; long cells wrap explicitly.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             for (i, c) in certs.iter().enumerate() {
                 if i > 0 {
                     ui.end_row();
@@ -40,7 +42,11 @@ pub(super) fn show_certificates(ui: &mut egui::Ui, id: &str, certs: &[Value]) {
                     ("SHA-256", "sha256"),
                 ] {
                     ui.label(RichText::new(label).weak());
-                    ui.add(egui::Label::new(RichText::new(s(c, key)).monospace()).selectable(true));
+                    ui.add(
+                        egui::Label::new(RichText::new(s(c, key)).monospace())
+                            .selectable(true)
+                            .wrap(),
+                    );
                     ui.end_row();
                 }
             }
@@ -86,31 +92,34 @@ impl App {
                         .get("credentials_present")
                         .and_then(Value::as_bool)
                         .unwrap_or(false);
-                    egui::Grid::new("env").num_columns(2).show(ui, |ui| {
-                        ui.label("Proxy");
-                        ui.label(
-                            RichText::new(if url.is_empty() {
-                                "(none set: Direct)".into()
-                            } else {
-                                url
-                            })
-                            .monospace(),
-                        );
-                        ui.end_row();
-                        ui.label("No proxy for");
-                        ui.label(
-                            RichText::new(if no_proxy.is_empty() {
-                                "(none)".into()
-                            } else {
-                                no_proxy.join(", ")
-                            })
-                            .monospace(),
-                        );
-                        ui.end_row();
-                        ui.label("Login in the variable");
-                        ui.label(if creds { "yes (not shown)" } else { "no" });
-                        ui.end_row();
-                    });
+                    egui::Grid::new("env")
+                        .num_columns(2)
+                        .min_col_width(110.0)
+                        .show(ui, |ui| {
+                            ui.label("Proxy");
+                            ui.label(
+                                RichText::new(if url.is_empty() {
+                                    "(none set: Direct)".into()
+                                } else {
+                                    url
+                                })
+                                .monospace(),
+                            );
+                            ui.end_row();
+                            ui.label("No proxy for");
+                            ui.label(
+                                RichText::new(if no_proxy.is_empty() {
+                                    "(none)".into()
+                                } else {
+                                    no_proxy.join(", ")
+                                })
+                                .monospace(),
+                            );
+                            ui.end_row();
+                            ui.label("Login in the variable");
+                            ui.label(if creds { "yes (not shown)" } else { "no" });
+                            ui.end_row();
+                        });
                 }
             }
             ProxyMode::Manual => {
@@ -230,6 +239,8 @@ impl App {
             .num_columns(3)
             .spacing([12.0, 4.0])
             .show(ui, |ui| {
+                // Table cells keep their width; long cells wrap explicitly.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 for st in &steps {
                     let name = s(st, "name");
                     let (mark, color) = match s(st, "status").as_str() {

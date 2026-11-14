@@ -18,8 +18,8 @@ fn gui() -> eframe::Result {
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("rust-mirror GUI")
-            .with_inner_size([1280.0, 860.0])
-            .with_min_inner_size([900.0, 600.0]),
+            .with_inner_size(rust_mirror_gui::DEFAULT_INNER_SIZE)
+            .with_min_inner_size(rust_mirror_gui::MIN_INNER_SIZE),
         ..Default::default()
     };
     prefer_direct3d12_on_windows(&mut options);

@@ -1,12 +1,18 @@
 # Launch rust-mirror-gui, capture its window with PrintWindow
 # (PW_RENDERFULLCONTENT, which includes Direct3D content), and report whether
-# it drew anything. Exits 1 if the window never appears, the process dies, or
-# the capture is blank (almost a single color).
+# it drew anything. Exits 1 if the window never appears, the process dies, the
+# capture is blank (almost a single color), or (with -RequireOnScreen) the
+# first window is larger than the screen's work area.
 #
-# Usage: capture-window.ps1 -Exe PATH -Out PNG [-WaitSeconds 15]
+# With -MinimumOut, the window is then shrunk to its minimum size (Windows
+# clamps the request to the app's 900x600 minimum) and captured again.
+#
+# Usage: capture-window.ps1 -Exe PATH -Out PNG [-MinimumOut PNG] [-RequireOnScreen] [-WaitSeconds 15]
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [Parameter(Mandatory = $true)][string]$Out,
+    [string]$MinimumOut,
+    [switch]$RequireOnScreen,
     [int]$WaitSeconds = 15
 )
 $ErrorActionPreference = 'Stop'
@@ -18,9 +24,50 @@ public static class Win {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
 }
 "@
+
+function Capture-Window([IntPtr]$hwnd, [string]$path) {
+    $rect = New-Object Win+RECT
+    [void][Win]::GetWindowRect($hwnd, [ref]$rect)
+    $client = New-Object Win+RECT
+    [void][Win]::GetClientRect($hwnd, [ref]$client)
+    $w = $rect.Right - $rect.Left
+    $h = $rect.Bottom - $rect.Top
+    Write-Host "Window ${w}x${h} at ($($rect.Left),$($rect.Top)); client area $($client.Right)x$($client.Bottom)"
+    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    $PW_RENDERFULLCONTENT = 2
+    $ok = [Win]::PrintWindow($hwnd, $hdc, $PW_RENDERFULLCONTENT)
+    $g.ReleaseHdc($hdc)
+    $g.Dispose()
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    Write-Host "PrintWindow returned $ok; saved $path"
+    # Blank check: distinct colors and the share of the most common color.
+    $counts = @{}
+    $samples = 0
+    for ($y = 0; $y -lt $h; $y += 4) {
+        for ($x = 0; $x -lt $w; $x += 4) {
+            $c = $bmp.GetPixel($x, $y).ToArgb()
+            $counts[$c] = 1 + [int]$counts[$c]
+            $samples++
+        }
+    }
+    $bmp.Dispose()
+    $top = ($counts.Values | Measure-Object -Maximum).Maximum
+    $share = [math]::Round(100.0 * $top / $samples, 1)
+    Write-Host "Sampled $samples pixels: $($counts.Count) distinct colors; most common color covers $share%"
+    if (-not $ok -or $counts.Count -lt 20 -or $share -gt 98) {
+        throw "the captured window looks blank"
+    }
+    Write-Host "The window drew content."
+    return $rect
+}
 
 $adapters = Get-CimInstance Win32_VideoController | ForEach-Object { "$($_.Name) (driver $($_.DriverVersion))" }
 Write-Output "Display adapters: $($adapters -join '; ')"
@@ -36,7 +83,7 @@ while ($proc.MainWindowHandle -eq [IntPtr]::Zero -or $proc.MainWindowTitle -notl
     $proc.Refresh()
 }
 $hwnd = $proc.MainWindowHandle
-Write-Output "Window handle $hwnd, title '$($proc.MainWindowTitle)', visible $([Win]::IsWindowVisible($hwnd))"
+Write-Output "Window handle $hwnd, title '$($proc.MainWindowTitle)', visible $([Win]::IsWindowVisible($hwnd)), DPI $([Win]::GetDpiForWindow($hwnd))"
 Start-Sleep -Seconds $WaitSeconds
 $proc.Refresh()
 if ($proc.HasExited) { throw "the app exited with code $($proc.ExitCode) after showing its window" }
@@ -47,40 +94,24 @@ $gfx = $proc.Modules | Where-Object { $_.ModuleName -match '^(d3d12|d3d12core|d3
 Write-Output "Graphics modules loaded: $(($gfx | Sort-Object) -join ', ')"
 if ($gfx -contains 'd3d10warp.dll') { Write-Output "Renderer: Direct3D 12 on WARP (software)" }
 
-$rect = New-Object Win+RECT
-[void][Win]::GetWindowRect($hwnd, [ref]$rect)
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-Write-Output "Primary screen $($screen.Width)x$($screen.Height)"
-[void][Win]::GetWindowRect($hwnd, [ref]$rect)
-$w = $rect.Right - $rect.Left
-$h = $rect.Bottom - $rect.Top
-Write-Output "Window size ${w}x${h}"
-$bmp = New-Object System.Drawing.Bitmap $w, $h
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$hdc = $g.GetHdc()
-$PW_RENDERFULLCONTENT = 2
-$ok = [Win]::PrintWindow($hwnd, $hdc, $PW_RENDERFULLCONTENT)
-$g.ReleaseHdc($hdc)
-$g.Dispose()
-$bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
-Write-Output "PrintWindow returned $ok; saved $Out"
-
-# Blank check: distinct colors and the share of the most common color on a grid.
-$counts = @{}
-$samples = 0
-for ($y = 0; $y -lt $h; $y += 4) {
-    for ($x = 0; $x -lt $w; $x += 4) {
-        $c = $bmp.GetPixel($x, $y).ToArgb()
-        $counts[$c] = 1 + [int]$counts[$c]
-        $samples++
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen
+Write-Output "Primary screen $($screen.Bounds.Width)x$($screen.Bounds.Height), work area $($screen.WorkingArea.Width)x$($screen.WorkingArea.Height)"
+$rect = Capture-Window $hwnd $Out
+if ($RequireOnScreen) {
+    $area = $screen.WorkingArea
+    # Allow the invisible resize borders Windows adds around a window.
+    $slack = 16
+    if (($rect.Right - $rect.Left) -gt ($area.Width + $slack) -or ($rect.Bottom - $rect.Top) -gt ($area.Height + $slack)) {
+        throw "the first window ($($rect.Right - $rect.Left)x$($rect.Bottom - $rect.Top)) is larger than the work area ($($area.Width)x$($area.Height))"
     }
+    Write-Output "The first window fits the work area."
 }
-$bmp.Dispose()
-$top = ($counts.Values | Measure-Object -Maximum).Maximum
-$share = [math]::Round(100.0 * $top / $samples, 1)
-Write-Output "Sampled $samples pixels: $($counts.Count) distinct colors; most common color covers $share%"
+
+if ($MinimumOut) {
+    $SWP_NOZORDER = 0x0004
+    [void][Win]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, 400, 300, $SWP_NOZORDER)
+    Start-Sleep -Seconds 5
+    Write-Output "After asking for 400x300 (Windows applies the app's minimum):"
+    [void](Capture-Window $hwnd $MinimumOut)
+}
 Stop-Process -Id $proc.Id -Force
-if (-not $ok -or $counts.Count -lt 20 -or $share -gt 98) {
-    throw "the captured window looks blank"
-}
-Write-Output "The window drew content."

@@ -1,0 +1,11 @@
+{"command":"check-network","elapsed_ms":0,"protocol":1,"seq":0,"tool_version":"0.5.0","type":"hello"}
+{"elapsed_ms":0,"index":1,"name":"check-network","seq":1,"total":null,"type":"stage"}
+{"elapsed_ms":0,"index":2,"name":"check-network","seq":2,"total":null,"type":"stage"}
+{"elapsed_ms":0,"index":3,"name":"dns","seq":3,"total":null,"type":"stage"}
+{"elapsed_ms":1,"index":4,"name":"connect","seq":4,"total":null,"type":"stage"}
+{"elapsed_ms":1,"index":5,"name":"tls","seq":5,"total":null,"type":"stage"}
+{"elapsed_ms":31,"index":6,"name":"download","seq":6,"total":null,"type":"stage"}
+{"action":"download","elapsed_ms":31,"expected_bytes":null,"offset":0,"path":"dist/channel-rust-stable.toml.sha256","seq":7,"type":"artifact"}
+{"action":"download","elapsed_ms":42,"expected_bytes":91,"offset":0,"path":"dist/channel-rust-stable.toml.sha256","seq":8,"type":"artifact"}
+{"count":91,"elapsed_ms":43,"path":"dist/channel-rust-stable.toml.sha256","seq":9,"type":"bytes"}
+{"elapsed_ms":44,"error":null,"ok":true,"report":{"ok":true,"steps":[{"certificates":[],"message":"stage completed","name":"dns","status":"passed","error_kind":null},{"certificates":[],"message":"stage completed","name":"connect","status":"passed","error_kind":null},{"certificates":[],"message":"not required or an earlier stage failed","name":"proxy_auth","status":"skipped","error_kind":null},{"certificates":[{"issuer":"C=BE, O=GlobalSign nv-sa, CN=GlobalSign Atlas R46 DV TLS CA 2026 Q3","not_after":"Thu, 15 Apr 2027 09:01:50 +0000","sha256":"830af3b832de1e2ef9bf08ff0dc1b2b4f63faa9fb2930016e866ac0198cb15a2","subject":"CN=fastly-static.rust-lang.org"},{"issuer":"C=BE, O=GlobalSign nv-sa, CN=GlobalSign Root R46","not_after":"Sat, 22 Apr 2028 00:00:00 +0000","sha256":"99aec92eea8fb536f74dfbfb8244e4c8f5ac3b658f7a988619797a4d04ac1036","subject":"C=BE, O=GlobalSign nv-sa, CN=GlobalSign Atlas R46 DV TLS CA 2026 Q3"},{"issuer":"OU=GlobalSign Root CA - R3, O=GlobalSign, CN=GlobalSign","not_after":"Sun, 18 Mar 2029 00:00:00 +0000","sha256":"a63c1398b5f8dd2d432fbe4c2c19142bea6d5d0221fae794718ae7597acca96d","subject":"C=BE, O=GlobalSign nv-sa, CN=GlobalSign Root R46"}],"message":"stage completed","name":"tls","status":"passed","error_kind":null},{"certificates":[],"message":"stage completed","name":"download","status":"passed","error_kind":null}]},"seq":10,"type":"result"}

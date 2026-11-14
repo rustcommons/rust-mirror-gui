@@ -396,6 +396,47 @@ impl Job {
         })
     }
 
+    /// A finished job rebuilt from recorded worker output (JSON lines), fed
+    /// through the same progress and log handling as [`Job::poll`]. Layout
+    /// tests use it to draw real reports without starting a worker; the only
+    /// process started is the test binary listing its tests.
+    #[cfg(test)]
+    pub(crate) fn replayed(spec: Spec, output: &str) -> Job {
+        let mut child = Command::new(std::env::current_exe().expect("test binary"))
+            .arg("--list")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("start the test binary");
+        let status = child.wait().expect("wait");
+        let (_tx, rx) = mpsc::channel();
+        let now = Instant::now();
+        let mut job = Job {
+            label: spec.label.clone(),
+            command_line: spec.display(),
+            started: now,
+            last_event: now,
+            last_progress: now,
+            progress: Progress::default(),
+            log: Vec::new(),
+            stop_requested: None,
+            killed: false,
+            exit: Some(status),
+            exited_at: Some(now),
+            stdout_closed: true,
+            stdin: None,
+            child,
+            rx,
+        };
+        for line in output.lines().filter(|l| !l.trim().is_empty()) {
+            if let Some((kind, text)) = job.progress.apply(&Event::parse(line)) {
+                job.push(kind, text);
+            }
+        }
+        job
+    }
+
     /// Drain pending output and check for process exit. Never blocks.
     pub fn poll(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {

@@ -30,6 +30,15 @@ pub(super) struct LockState {
     pending: Option<Request>,
 }
 
+#[cfg(test)]
+impl LockState {
+    /// Layout tests: show `report` as the result of previewing `inputs`.
+    pub(super) fn show_test_preview(&mut self, inputs: Vec<(String, String)>, report: Value) {
+        self.inputs = inputs.clone();
+        self.preview = Some((Request::Import(inputs), report));
+    }
+}
+
 fn s(v: &Value, k: &str) -> String {
     v.get(k).and_then(Value::as_str).unwrap_or("").to_string()
 }
@@ -223,6 +232,8 @@ impl App {
             .num_columns(6)
             .spacing([12.0, 3.0])
             .show(ui, |ui| {
+                // Table cells keep their width; long cells wrap explicitly.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 for h in [
                     "Source",
                     "File",
