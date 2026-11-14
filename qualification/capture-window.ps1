@@ -4,8 +4,8 @@
 # capture is blank (almost a single color), or (with -RequireOnScreen) the
 # first window is larger than the screen's work area.
 #
-# With -MinimumOut, the window is then shrunk to its minimum size (Windows
-# clamps the request to the app's 900x600 minimum) and captured again.
+# With -MinimumOut, the window is then set to the app's minimum size (a
+# 900x600 client area) and captured again.
 #
 # Usage: capture-window.ps1 -Exe PATH -Out PNG [-MinimumOut PNG] [-RequireOnScreen] [-WaitSeconds 15]
 param(
@@ -108,10 +108,19 @@ if ($RequireOnScreen) {
 }
 
 if ($MinimumOut) {
+    # SetWindowPos is not clamped to the app's minimum (only dragging is), so
+    # ask for exactly the minimum client area: 900x600 plus the window frame.
+    $client = New-Object Win+RECT
+    [void][Win]::GetClientRect($hwnd, [ref]$client)
+    $scale = [Win]::GetDpiForWindow($hwnd) / 96.0
+    $frameW = ($rect.Right - $rect.Left) - $client.Right
+    $frameH = ($rect.Bottom - $rect.Top) - $client.Bottom
+    $w = [int][math]::Round(900 * $scale) + $frameW
+    $h = [int][math]::Round(600 * $scale) + $frameH
     $SWP_NOZORDER = 0x0004
-    [void][Win]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, 400, 300, $SWP_NOZORDER)
+    [void][Win]::SetWindowPos($hwnd, [IntPtr]::Zero, 0, 0, $w, $h, $SWP_NOZORDER)
     Start-Sleep -Seconds 5
-    Write-Output "After asking for 400x300 (Windows applies the app's minimum):"
+    Write-Output "At the minimum size (900x600 client area):"
     [void](Capture-Window $hwnd $MinimumOut)
 }
 Stop-Process -Id $proc.Id -Force
