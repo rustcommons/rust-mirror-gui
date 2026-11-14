@@ -1,0 +1,117 @@
+name: Windows qualification
+
+# Repeatable end-to-end qualification of the crate workflow on Windows, through
+# the GUI's own worker (`rust-mirror-gui --worker`, the code path the window
+# uses), built in release mode. Evidence: docs/evals/*-windows-qualification.md.
+#
+# The publish target is a local HTTPS stand-in for a Nexus raw hosted
+# repository (qualification/nexus_fixture.py), not a real Nexus server.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/windows-qualification.yml
+      - qualification/**
+      - tests/windows_qualification.rs
+permissions:
+  contents: read
+jobs:
+  crate-workflow:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Runner facts
+        shell: pwsh
+        run: |
+          "Q=$env:RUNNER_TEMP\q" >> $env:GITHUB_ENV
+          Get-CimInstance Win32_OperatingSystem | Format-List Caption, Version, BuildNumber
+          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, AdapterCompatibility
+          cargo --version; rustc --version; python --version
+
+      - name: Build the app (release)
+        run: cargo build --release --locked --bin rust-mirror-gui
+
+      - name: Private test CA and publish fixture
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:Q\nexus" | Out-Null
+          bash qualification/make-test-ca.sh "$($env:Q -replace '\\','/')/ca"
+          $user = "qual"
+          $pass = [guid]::NewGuid().ToString("N")
+          Write-Output "::add-mask::$pass"
+          "QUAL_PUBLISH_USER=$user" >> $env:GITHUB_ENV
+          "QUAL_PUBLISH_PASSWORD=$pass" >> $env:GITHUB_ENV
+          $env:FIXTURE_USER = $user
+          $env:FIXTURE_PASSWORD = $pass
+          Start-Process python -ArgumentList '-I', 'qualification/nexus_fixture.py', "$env:Q\nexus", "$env:Q\ca\server.pem", "$env:Q\ca\server.key", '8443', "$env:Q\fixture.jsonl" -RedirectStandardOutput "$env:Q\fixture.out" -RedirectStandardError "$env:Q\fixture.err"
+          Start-Sleep -Seconds 3
+          Get-Content "$env:Q\fixture.out", "$env:Q\fixture.err"
+
+      - name: Crate workflow through the worker (real crates.io)
+        shell: pwsh
+        env:
+          QUAL_PUBLISH_URL: https://127.0.0.1:8443/repository/crates-qual/
+        run: |
+          $env:QUAL_DIR = "$env:Q\work"
+          $env:QUAL_LOCK = "${{ github.workspace }}\qualification\demo\Cargo.lock"
+          $env:QUAL_CA_FILE = "$env:Q\ca\ca.pem"
+          cargo test --release --locked --test windows_qualification -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Fresh Cargo home fetches and builds offline from the published mirror
+        shell: pwsh
+        run: |
+          $client = "$env:Q\client"
+          New-Item -ItemType Directory -Force "$client\home" | Out-Null
+          Copy-Item -Recurse qualification\demo "$client\demo"
+          Copy-Item "$env:Q\work\cargo-config.toml" "$client\home\config.toml"
+          Get-Content "$client\home\config.toml"
+          $before = (Get-FileHash "$client\demo\Cargo.lock").Hash
+          $env:CARGO_HOME = "$client\home"
+          $env:CARGO_TARGET_DIR = "$client\target"
+          # Trust the private test CA. It has no revocation endpoint, so Windows'
+          # revocation check is off for this client; chain and host name are
+          # still verified.
+          $env:CARGO_HTTP_CAINFO = "$env:Q\ca\ca.pem"
+          $env:CARGO_HTTP_CHECK_REVOKE = "false"
+          Push-Location "$client\demo"
+          cargo fetch --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --locked --offline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$client\target\debug\qualification-demo.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          $after = (Get-FileHash "$client\demo\Cargo.lock").Hash
+          if ($before -ne $after) { throw "Cargo.lock changed" }
+          Write-Output "Cargo.lock unchanged: $after"
+
+      - name: Fixture request summary
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:Q\fixture.jsonl") {
+            Get-Content "$env:Q\fixture.jsonl" | ConvertFrom-Json | Group-Object method, status | Select-Object Count, Name | Format-Table
+          }
+
+      - name: Launch the window and capture it (PrintWindow)
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:Q\shots" | Out-Null
+          ./qualification/capture-window.ps1 -Exe target\release\rust-mirror-gui.exe -Out "$env:Q\shots\window-dx12.png"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-qualification-evidence
+          path: |
+            ${{ runner.temp }}\q\work\evidence.json
+            ${{ runner.temp }}\q\work\crates.toml
+            ${{ runner.temp }}\q\work\cargo-config.toml
+            ${{ runner.temp }}\q\fixture.jsonl
+            ${{ runner.temp }}\q\shots
+          if-no-files-found: warn
