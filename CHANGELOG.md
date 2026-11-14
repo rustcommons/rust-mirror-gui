@@ -9,9 +9,9 @@
 - Testing: a repeatable Windows qualification workflow runs the crate
   workflow end to end through the app's worker (paste, Cargo.lock import,
   preview, approval, hard kill and resume, retention preview, Client setup,
-  publish to a local HTTPS stand-in), then has a fresh Cargo home build
-  offline from the published mirror, and captures the window on a GPU-less
-  Windows Server. See the [record](docs/evals/2026-11-14-windows-qualification.md).
+  publish to an owned native Windows Nexus OSS), then has a fresh Cargo home
+  build offline from the published mirror, and captures the window on a
+  GPU-less Windows Server. See the [record](docs/evals/2026-11-14-windows-qualification.md).
 
 ## [0.4.0] - 2026-11-13
 
