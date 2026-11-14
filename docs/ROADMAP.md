@@ -11,7 +11,10 @@ promised for a specific release. Shipped behavior is described in the
   completes a sync on machines without a GPU, especially Windows Server over
   Remote Desktop. Includes a clear failure message where nothing can draw and
   tested workarounds. Waiting on a test environment decision.
-  Plan: [plans/NO-GPU-TEST-PLAN.md](plans/NO-GPU-TEST-PLAN.md).
+  Plan: [plans/NO-GPU-TEST-PLAN.md](plans/NO-GPU-TEST-PLAN.md). First partial
+  data point (2026-11-14): on a GitHub-hosted Windows Server 2025 runner with no
+  GPU, 0.4.0 opens and draws with Direct3D 12 on WARP; see the
+  [Windows qualification](evals/2026-11-14-windows-qualification.md).
 - **Screen readers.** Run NVDA, Narrator, VoiceOver and Orca against a form, a
   checkbox list and a progress display. Only the Linux accessibility tree has been
   inspected so far.

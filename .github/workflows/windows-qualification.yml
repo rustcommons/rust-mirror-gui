@@ -1,0 +1,79 @@
+name: Windows qualification
+
+# Repeatable end-to-end qualification of the crate workflow on Windows, through
+# the GUI's own worker (`rust-mirror-gui --worker`, the code path the window
+# uses), built in release mode, publishing to an owned native Windows Nexus OSS
+# started by rust-mirror's Windows Nexus harness. Then a fresh Cargo home
+# builds offline from the published mirror, and the window is launched and
+# captured. Evidence: docs/evals/2026-11-14-windows-qualification.md.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/windows-qualification.yml
+      - qualification/**
+      - tests/windows_qualification.rs
+permissions:
+  contents: read
+jobs:
+  crate-workflow:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # rust-mirror's Windows Nexus harness, pinned to the reviewed main commit
+      # (PR #39 merge). Used unchanged.
+      - uses: actions/checkout@v4
+        with:
+          repository: rustcommons/rust-mirror
+          ref: 5850dcf3e7e921123f01cf0b5f9d50fc77ef0261
+          path: rust-mirror
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Runner facts
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_OperatingSystem | Format-List Caption, Version, BuildNumber
+          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, AdapterCompatibility
+          cargo --version; rustc --version; python --version
+          (Get-Command openssl).Source
+          git -C rust-mirror rev-parse HEAD
+
+      - name: Build the app and the qualification test (release)
+        run: cargo test --release --locked --test windows_qualification --no-run
+
+      - name: Crate workflow through the worker against native Windows Nexus OSS, then an offline Cargo build
+        run: python qualification/run_gui_nexus_windows.py --rust-mirror-scripts rust-mirror/scripts --root "${{ runner.temp }}/rmg-owned-nexus" --evidence "${{ runner.temp }}/rmg-evidence"
+
+      - name: Teardown only the owned Nexus instance after an interruption
+        if: always()
+        run: python rust-mirror/scripts/run_nexus_windows.py --cleanup --root "${{ runner.temp }}/rmg-owned-nexus"
+
+      - name: Launch the window and capture it (PrintWindow)
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\rmg-shots" | Out-Null
+          ./qualification/capture-window.ps1 -Exe target\release\rust-mirror-gui.exe -Out "$env:RUNNER_TEMP\rmg-shots\window-dx12.png"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-qualification-evidence
+          path: |
+            ${{ runner.temp }}/rmg-evidence/summary.json
+            ${{ runner.temp }}/rmg-evidence/cleanup.json
+            ${{ runner.temp }}/rmg-evidence/requests.json
+            ${{ runner.temp }}/rmg-evidence/revocation-requests.json
+            ${{ runner.temp }}/rmg-evidence/*.stdout
+            ${{ runner.temp }}/rmg-evidence/*.stderr
+            ${{ runner.temp }}/rmg-evidence/work/evidence.json
+            ${{ runner.temp }}/rmg-evidence/work/crates.toml
+            ${{ runner.temp }}/rmg-evidence/work/cargo-config.toml
+            ${{ runner.temp }}/rmg-shots
+          if-no-files-found: warn
