@@ -42,6 +42,16 @@ jobs:
           $out = & dist/gui/rust-mirror-gui.exe --worker --version | Out-String
           Write-Output $out
           if ($out -notmatch '"protocol":1') { throw "worker did not report protocol 1" }
+      - name: Window draws, fits the screen and works at its minimum size (PrintWindow)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force window-shots | Out-Null
+          ./qualification/capture-window.ps1 -Exe dist/gui/rust-mirror-gui.exe -Out window-shots/first-window.png -MinimumOut window-shots/minimum-size.png -RequireOnScreen
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-window-captures
+          path: window-shots
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: rust-mirror-gui-windows-x86_64

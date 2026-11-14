@@ -1,0 +1,11 @@
+{"command":"generations","elapsed_ms":0,"protocol":1,"seq":0,"tool_version":"0.5.0","type":"hello"}
+{"elapsed_ms":0,"index":1,"name":"generations","seq":1,"total":null,"type":"stage"}
+{"elapsed_ms":4,"index":2,"name":"resolve","seq":2,"total":null,"type":"stage"}
+{"elapsed_ms":4,"index":3,"name":"closure-check","seq":3,"total":null,"type":"stage"}
+{"elapsed_ms":12,"index":4,"name":"resolve","seq":4,"total":null,"type":"stage"}
+{"elapsed_ms":13,"index":5,"name":"closure-check","seq":5,"total":null,"type":"stage"}
+{"elapsed_ms":18,"index":6,"name":"resolve","seq":6,"total":null,"type":"stage"}
+{"elapsed_ms":18,"index":7,"name":"closure-check","seq":7,"total":null,"type":"stage"}
+{"elapsed_ms":30,"index":8,"name":"resolve","seq":8,"total":null,"type":"stage"}
+{"elapsed_ms":31,"index":9,"name":"closure-check","seq":9,"total":null,"type":"stage"}
+{"elapsed_ms":247,"error":null,"ok":true,"report":{"directory":"/tmp/lk/ws","generations":[{"crate_count":3,"inventory_modified_ns":1794606222831500718,"inventory_sha256":"49f7c59d78b231faab25e653d7421d0ca8a8281ebf044b8e382a174e4da36293","kind":"crates","path":"/tmp/lk/ws/run-002/mirror","recorded_bytes":247018,"schema":5,"toolchains":[],"version_count":5}],"issues":[],"runs":[{"kind":"crates","path":"/tmp/lk/ws/run-001","state":"pruned"},{"kind":"crates","mirror":"/tmp/lk/ws/run-002/mirror","path":"/tmp/lk/ws/run-002","previous_inventory_sha256":"3d6937727f4b6375de71b43c540ca7991ffd50b7270b0bc2ebaa971af803c452","state":"completed"}],"unmanaged":[]},"seq":10,"type":"result"}

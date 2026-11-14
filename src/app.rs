@@ -14,7 +14,7 @@ mod crates_page;
 mod lock_import;
 mod network_page;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Backend,
     Network,
@@ -79,12 +79,21 @@ pub struct App {
     crate_retention: crate_retention_page::CrateRetention,
     locks: lock_import::LockState,
     crate_retention_pending_discover: bool,
+    /// Last central-panel content size and viewport (layout checks).
+    last_page_extent: Option<(egui::Vec2, egui::Rect)>,
+    /// The first window has been fitted to its monitor.
+    window_fitted: bool,
 }
 
 impl App {
     pub fn new(ctx: &egui::Context) -> Self {
-        let settings = settings::load();
-        let mut app = Self {
+        let mut app = Self::with_settings(settings::load());
+        app.check_backend(ctx);
+        app
+    }
+
+    fn with_settings(settings: settings::Settings) -> Self {
+        Self {
             saved: settings.clone(),
             save_path: if settings.config_path.is_empty() {
                 "mirror.toml".into()
@@ -127,9 +136,9 @@ impl App {
             crate_retention: Default::default(),
             locks: Default::default(),
             crate_retention_pending_discover: false,
-        };
-        app.check_backend(ctx);
-        app
+            last_page_extent: None,
+            window_fitted: false,
+        }
     }
 
     fn check_backend(&mut self, ctx: &egui::Context) {
@@ -165,6 +174,9 @@ impl App {
     }
 
     fn persist(&mut self, now: bool) {
+        if cfg!(test) {
+            return; // layout tests never touch the user's settings file
+        }
         if self.settings != self.saved && (now || self.last_save.elapsed() > Duration::from_secs(2))
         {
             let _ = settings::save(&self.settings);
@@ -176,7 +188,18 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.draw(ui);
+    }
+
+    fn on_exit(&mut self) {
+        self.persist(true);
+    }
+}
+
+impl App {
+    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.fit_window_to_monitor(&ctx);
         if let Backend::Checking(rx) = &self.backend {
             if let Ok(result) = rx.try_recv() {
                 self.backend = match result {
@@ -207,7 +230,12 @@ impl eframe::App for App {
             .exact_size(200.0)
             .show(ui, |ui| self.nav(ui));
         egui::CentralPanel::default_margins().show(ui, |ui| {
-            egui::ScrollArea::vertical()
+            // Both directions: on a small or scaled window nothing is out of
+            // reach, even content that cannot wrap (wide tables).
+            // Labels wrap inside rows too (indented hints, "Same as" lines),
+            // so text never pushes the page wider than the window.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            let out = egui::ScrollArea::both()
                 .auto_shrink(false)
                 .show(ui, |ui| match self.page {
                     Page::Backend => self.page_backend(ui, &ctx),
@@ -221,15 +249,44 @@ impl eframe::App for App {
                     Page::CrateRetention => self.page_crate_retention(ui, &ctx),
                     Page::Publish => self.page_publish(ui, &ctx),
                 });
+            self.last_page_extent = Some((out.content_size, out.inner_rect));
         });
-    }
-
-    fn on_exit(&mut self) {
-        self.persist(true);
     }
 }
 
+/// Room left on the monitor for a taskbar and the window's title bar and
+/// borders (points). The work area itself is not available to the app.
+const MONITOR_MARGIN: egui::Vec2 = egui::vec2(16.0, 96.0);
+
+/// The largest inner size that fits `monitor`, never below the app's minimum.
+pub(crate) fn fitted_inner_size(wanted: egui::Vec2, monitor: egui::Vec2) -> egui::Vec2 {
+    (monitor - MONITOR_MARGIN)
+        .min(wanted)
+        .max(crate::MIN_INNER_SIZE.into())
+}
+
 impl App {
+    /// Once the monitor size is known, shrink a first window that would not
+    /// fit (e.g. 1280x860 on a 1024x768 screen).
+    fn fit_window_to_monitor(&mut self, ctx: &egui::Context) {
+        if self.window_fitted {
+            return;
+        }
+        let (monitor, inner) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().inner_rect));
+        let (Some(monitor), Some(inner)) = (monitor, inner) else {
+            return;
+        };
+        self.window_fitted = true;
+        let fit = fitted_inner_size(inner.size(), monitor);
+        if fit.x < inner.width() - 0.5 || fit.y < inner.height() - 0.5 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(fit));
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                ((monitor.x - fit.x) / 2.0).max(0.0),
+                ((monitor.y - MONITOR_MARGIN.y - fit.y) / 2.0).max(0.0),
+            )));
+        }
+    }
+
     fn top_bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             ui.heading(RichText::new("rust-mirror").strong());
@@ -264,8 +321,14 @@ impl App {
             if let Some((op, job)) = &self.job {
                 ui.separator();
                 let (text, color) = health_text(*op, job);
-                ui.label(RichText::new(format!("{}: {text}", job.label)).color(color));
-                if !job.finished() && ui.small_button("Show").clicked() {
+                let status = format!("{}: {text}", job.label);
+                // "Show" first, and the status shortened with "…", so neither
+                // is pushed out of a narrow window. The full text is on hover
+                // and on the operation's page.
+                let show = !job.finished() && ui.small_button("Show").clicked();
+                ui.add(egui::Label::new(RichText::new(&status).color(color)).truncate())
+                    .on_hover_text(&status);
+                if show {
                     self.page = match op {
                         Op::Publish => Page::Publish,
                         Op::Plan => Page::Plan,
@@ -369,6 +432,127 @@ impl App {
         );
     }
 
+    /// Selections page, left part: the list of selections.
+    fn selections_list(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Selections").strong());
+        let mut remove = None;
+        for (i, sel) in self.draft.selections.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let text = format!(
+                    "{} — {} · {} host(s)",
+                    sel.name,
+                    sel.toolchain,
+                    sel.all_hosts().len()
+                );
+                if ui.selectable_label(self.selected == i, text).clicked() {
+                    self.selected = i;
+                }
+                if self.draft.selections.len() > 1 && ui.small_button("Remove").clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            self.draft.selections.remove(i);
+            self.selected = self.selected.min(self.draft.selections.len() - 1);
+        }
+        if ui.button("+ Add selection").clicked() && self.draft.selections.len() < 32 {
+            let n = self.draft.selections.len() + 1;
+            self.draft
+                .selections
+                .push(SelectionDraft::new(&format!("selection-{n}")));
+            self.selected = self.draft.selections.len() - 1;
+        }
+    }
+
+    /// Selections page, right part: the selected entry. Returns true when
+    /// Refresh (release list) was pressed.
+    fn selection_editor(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut refresh_releases = false;
+        let sel = &mut self.draft.selections[self.selected];
+        ui.label(RichText::new("Selected").strong());
+        text_field(ui, "Name", &mut sel.name, "windows-dev");
+        text_field(
+            ui,
+            "Toolchain",
+            &mut sel.toolchain,
+            "1.90.0, stable or stable-2025-09-18",
+        );
+        ui.horizontal(|ui| {
+            ui.add_space(158.0);
+            let choices = release_choices(self.releases.as_ref());
+            egui::ComboBox::from_id_salt("toolchain-pick")
+                .selected_text("Pick from release list")
+                .width(220.0)
+                .show_ui(ui, |ui| {
+                    if choices.is_empty() {
+                        ui.label("No release list yet. Press Refresh.");
+                    }
+                    for (value, label) in &choices {
+                        if ui
+                            .selectable_label(sel.toolchain == *value, label)
+                            .clicked()
+                        {
+                            sel.toolchain = value.clone();
+                        }
+                    }
+                });
+            if ui
+                .small_button("Refresh")
+                .on_hover_text("Download the current release list (uses Network settings)")
+                .clicked()
+            {
+                refresh_releases = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(158.0);
+            ui.label(
+                RichText::new(release_status(self.releases.as_ref()))
+                    .weak()
+                    .small(),
+            );
+        });
+        ui.label(RichText::new("Host platforms (where the compiler runs)").strong());
+        for (triple, label) in TESTED_HOSTS {
+            let mut on = sel.hosts.iter().any(|h| h == triple);
+            if ui
+                .checkbox(&mut on, format!("{label}   {triple}"))
+                .changed()
+            {
+                if on {
+                    sel.hosts.push(triple.to_string());
+                } else {
+                    sel.hosts.retain(|h| h != triple);
+                }
+            }
+        }
+        text_field(
+            ui,
+            "Other hosts",
+            &mut sel.extra_hosts,
+            "advertised but not qualified, comma separated",
+        );
+        ui.horizontal(|ui| {
+            ui.label("Profile");
+            ui.radio_value(&mut sel.minimal, true, "minimal (rustc, cargo, rust-std)");
+            ui.radio_value(&mut sel.minimal, false, "default (+ clippy, rustfmt, docs)");
+        });
+        text_field(
+            ui,
+            "Extra components",
+            &mut sel.components,
+            "rust-src, rust-analyzer",
+        );
+        text_field(
+            ui,
+            "Extra targets",
+            &mut sel.targets,
+            "wasm32-unknown-unknown",
+        );
+        refresh_releases
+    }
+
     fn page_selections(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut refresh_releases = false;
         if !self.releases_tried && !self.job_running() {
@@ -400,121 +584,17 @@ impl App {
                 .labelled_by(l.id);
         });
         ui.add_space(8.0);
-        ui.columns(2, |cols| {
-            let ui = &mut cols[0];
-            ui.label(RichText::new("Selections").strong());
-            let mut remove = None;
-            for (i, sel) in self.draft.selections.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    let text = format!(
-                        "{} — {} · {} host(s)",
-                        sel.name,
-                        sel.toolchain,
-                        sel.all_hosts().len()
-                    );
-                    if ui.selectable_label(self.selected == i, text).clicked() {
-                        self.selected = i;
-                    }
-                    if self.draft.selections.len() > 1 && ui.small_button("Remove").clicked() {
-                        remove = Some(i);
-                    }
-                });
-            }
-            if let Some(i) = remove {
-                self.draft.selections.remove(i);
-                self.selected = self.selected.min(self.draft.selections.len() - 1);
-            }
-            if ui.button("+ Add selection").clicked() && self.draft.selections.len() < 32 {
-                let n = self.draft.selections.len() + 1;
-                self.draft
-                    .selections
-                    .push(SelectionDraft::new(&format!("selection-{n}")));
-                self.selected = self.draft.selections.len() - 1;
-            }
-
-            let ui = &mut cols[1];
-            let sel = &mut self.draft.selections[self.selected];
-            ui.label(RichText::new("Selected").strong());
-            text_field(ui, "Name", &mut sel.name, "windows-dev");
-            text_field(
-                ui,
-                "Toolchain",
-                &mut sel.toolchain,
-                "1.90.0, stable or stable-2025-09-18",
-            );
-            ui.horizontal(|ui| {
-                ui.add_space(158.0);
-                let choices = release_choices(self.releases.as_ref());
-                egui::ComboBox::from_id_salt("toolchain-pick")
-                    .selected_text("Pick from release list")
-                    .width(220.0)
-                    .show_ui(ui, |ui| {
-                        if choices.is_empty() {
-                            ui.label("No release list yet. Press Refresh.");
-                        }
-                        for (value, label) in &choices {
-                            if ui
-                                .selectable_label(sel.toolchain == *value, label)
-                                .clicked()
-                            {
-                                sel.toolchain = value.clone();
-                            }
-                        }
-                    });
-                if ui
-                    .small_button("Refresh")
-                    .on_hover_text("Download the current release list (uses Network settings)")
-                    .clicked()
-                {
-                    refresh_releases = true;
-                }
+        // Side by side when there is room; stacked on narrow or scaled windows.
+        if ui.available_width() >= 980.0 {
+            ui.columns(2, |cols| {
+                self.selections_list(&mut cols[0]);
+                refresh_releases = self.selection_editor(&mut cols[1]);
             });
-            ui.horizontal(|ui| {
-                ui.add_space(158.0);
-                ui.label(
-                    RichText::new(release_status(self.releases.as_ref()))
-                        .weak()
-                        .small(),
-                );
-            });
-            ui.label(RichText::new("Host platforms (where the compiler runs)").strong());
-            for (triple, label) in TESTED_HOSTS {
-                let mut on = sel.hosts.iter().any(|h| h == triple);
-                if ui
-                    .checkbox(&mut on, format!("{label}   {triple}"))
-                    .changed()
-                {
-                    if on {
-                        sel.hosts.push(triple.to_string());
-                    } else {
-                        sel.hosts.retain(|h| h != triple);
-                    }
-                }
-            }
-            text_field(
-                ui,
-                "Other hosts",
-                &mut sel.extra_hosts,
-                "advertised but not qualified, comma separated",
-            );
-            ui.horizontal(|ui| {
-                ui.label("Profile");
-                ui.radio_value(&mut sel.minimal, true, "minimal (rustc, cargo, rust-std)");
-                ui.radio_value(&mut sel.minimal, false, "default (+ clippy, rustfmt, docs)");
-            });
-            text_field(
-                ui,
-                "Extra components",
-                &mut sel.components,
-                "rust-src, rust-analyzer",
-            );
-            text_field(
-                ui,
-                "Extra targets",
-                &mut sel.targets,
-                "wasm32-unknown-unknown",
-            );
-        });
+        } else {
+            self.selections_list(ui);
+            ui.add_space(10.0);
+            refresh_releases = self.selection_editor(ui);
+        }
         ui.add_space(10.0);
         ui.separator();
         let problems = self.draft.problems();
@@ -918,6 +998,8 @@ impl App {
             .num_columns(4)
             .spacing([16.0, 6.0])
             .show(ui, |ui| {
+                // Table cells keep their width; long cells wrap explicitly.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 let l = ui.label("Newest stable releases to keep");
                 ui.add(egui::DragValue::new(&mut f.latest_stable).range(0..=256))
                     .labelled_by(l.id);
@@ -1131,7 +1213,9 @@ impl App {
         egui::Grid::new("job-facts")
             .num_columns(2)
             .spacing([16.0, 4.0])
+            .min_col_width(110.0)
             .show(ui, |ui| {
+                // Keys fit the first column; values (the last column) wrap.
                 let p = &job.progress;
                 ui.label("Stage");
                 ui.label(match &p.stage {
@@ -1385,6 +1469,8 @@ impl App {
                 .num_columns(3)
                 .spacing([12.0, 4.0])
                 .show(ui, |ui| {
+                    // Table cells keep their width; long cells wrap explicitly.
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     for (path, f) in active {
                         ui.label(&f.action);
                         ui.label(RichText::new(short_path(path)).monospace());
@@ -1604,14 +1690,15 @@ pub(super) fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Ve
         .num_columns(4)
         .spacing([14.0, 3.0])
         .show(ui, |ui| {
-            for h in ["Generation", "Contents", "Size", "Schema"] {
+            // Table cells keep their width; long cells wrap explicitly.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            for h in ["Contents", "Size", "Schema", "Generation"] {
                 ui.label(RichText::new(h).strong());
             }
             ui.end_row();
             for g in gens {
                 let path = s(g, "path");
                 choices.push(path.clone());
-                ui.label(RichText::new(&path).monospace());
                 if s(g, "kind") == "crates" {
                     // Schema-4 crate generation (rust-mirror 0.4.0 discovery).
                     let n = |k: &str| {
@@ -1638,10 +1725,11 @@ pub(super) fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Ve
                         .unwrap_or(0),
                 ));
                 ui.label(g.get("schema").map(|v| v.to_string()).unwrap_or_default());
+                // The path is last so it can wrap on narrow windows.
+                ui.add(egui::Label::new(RichText::new(&path).monospace()).wrap());
                 ui.end_row();
             }
             for r in runs {
-                ui.label(RichText::new(s(r, "path")).monospace());
                 ui.label(format!(
                     "{} run: {}",
                     s(r, "kind"),
@@ -1649,6 +1737,7 @@ pub(super) fn show_catalog(ui: &mut egui::Ui, catalog: &serde_json::Value) -> Ve
                 ));
                 ui.label("");
                 ui.label("");
+                ui.add(egui::Label::new(RichText::new(s(r, "path")).monospace()).wrap());
                 ui.end_row();
             }
         });
@@ -1693,7 +1782,9 @@ pub(super) fn show_prune_plan(ui: &mut egui::Ui, plan: &serde_json::Value) -> us
         .striped(true)
         .num_columns(2)
         .spacing([14.0, 3.0])
+        .min_col_width(60.0)
         .show(ui, |ui| {
+            // "remove"/"keep" fit the first column; the path text wraps.
             for f in folders {
                 ui.label(RichText::new("remove").color(RED));
                 ui.label(
@@ -1887,20 +1978,21 @@ fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
                     .num_columns(if has_sizes { 6 } else { 5 })
                     .spacing([14.0, 3.0])
                     .show(ui, |ui| {
-                        for h in ["Package", "Target", "Kind", "File", "SHA-256"] {
+                        // Table cells keep their width; long cells wrap explicitly.
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        for h in ["Package", "Target", "Kind", "SHA-256"] {
                             ui.label(RichText::new(h).strong());
                         }
                         if has_sizes {
                             ui.label(RichText::new("Size (est.)").strong());
                         }
+                        ui.label(RichText::new("File").strong());
                         ui.end_row();
                         for a in &artifacts {
                             ui.label(text(a, "package"));
                             ui.label(RichText::new(text(a, "target")).monospace());
                             ui.label(text(a, "kind"));
                             let path = text(a, "path");
-                            ui.label(RichText::new(short_path(&path)).monospace())
-                                .on_hover_text(&path);
                             let sha = text(a, "sha256");
                             ui.label(
                                 RichText::new(format!("{}…", &sha[..sha.len().min(12)]))
@@ -1913,6 +2005,12 @@ fn show_plans(ui: &mut egui::Ui, plans: &[serde_json::Value]) {
                                     None => ui.label(RichText::new("unknown").weak()),
                                 };
                             }
+                            // The file name is last so it can wrap.
+                            ui.add(
+                                egui::Label::new(RichText::new(short_path(&path)).monospace())
+                                    .wrap(),
+                            )
+                            .on_hover_text(&path);
                             ui.end_row();
                         }
                     });
@@ -1972,5 +2070,238 @@ fn save_config(path: &str, text: &str, replace: bool) -> (bool, String) {
             "The file exists. Tick “Replace the file if it exists” or choose another name.".into(),
         ),
         Err(e) => (false, format!("Could not save: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    const PAGES: [Page; 10] = [
+        Page::Backend,
+        Page::Network,
+        Page::CrateCatalog,
+        Page::CrateSync,
+        Page::CrateRetention,
+        Page::Selections,
+        Page::Plan,
+        Page::Sync,
+        Page::Generations,
+        Page::Publish,
+    ];
+
+    fn test_app() -> App {
+        // Never start a worker: no release-list load, and a missing worker.
+        std::env::set_var(
+            "RUST_MIRROR_GUI_WORKER",
+            "/nonexistent/rust-mirror-gui-test-worker",
+        );
+        let mut app = App::with_settings(settings::Settings::default());
+        app.releases_tried = true;
+        app
+    }
+
+    /// Render `app` at a window of `w`x`h` points and return the central
+    /// panel's content size and viewport after layout has settled.
+    fn render(app: &mut App, w: f32, h: f32, ppp: f32) -> (egui::Vec2, egui::Rect) {
+        let ctx = egui::Context::default();
+        for _ in 0..3 {
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                )),
+                ..Default::default()
+            };
+            input
+                .viewports
+                .entry(egui::ViewportId::ROOT)
+                .or_default()
+                .native_pixels_per_point = Some(ppp);
+            let mut out = ctx.run_ui(input, |ui| app.draw(ui));
+            out.textures_delta.clear();
+        }
+        app.last_page_extent.expect("central panel drawn")
+    }
+
+    /// Overflow descriptions for `app` at the minimum window size.
+    fn overflow(app: &mut App, what: &str) -> Vec<String> {
+        let mut problems = Vec::new();
+        for ppp in [1.0, 1.25, 1.5] {
+            let (content, view) = render(app, 900.0, 600.0, ppp);
+            if content.x > view.width() + 1.0 {
+                problems.push(format!(
+                    "{what} at 900x600 points, scale {ppp}: content {:.0} wide in a {:.0} wide page",
+                    content.x,
+                    view.width()
+                ));
+            }
+        }
+        problems
+    }
+
+    /// Long Windows-style folders, so paths in reports are as wide as real ones.
+    const LONG: &str =
+        "C:/Users/administrator.CORPORATE/Documents/rust-mirror-workspaces/crates-2026-november";
+
+    fn fixture(name: &str) -> String {
+        let path = format!(
+            "{}/tests/fixtures/layout/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{path}: {e}"))
+            .replace("/tmp/lk", LONG)
+            .replace("/tmp/rec", LONG)
+            .replace("/tmp/fx", LONG)
+            .replace("/tmp/lkca", LONG)
+    }
+
+    /// Make `op` the app's job from a recorded worker run, and store its
+    /// result through the app's own `harvest`.
+    fn replay(app: &mut App, op: Op, name: &str) {
+        let spec = crate::job::Spec {
+            program: format!("{LONG}/rust-mirror-gui.exe").into(),
+            args: vec![
+                "--worker".into(),
+                name.into(),
+                format!("{LONG}/input-with-a-long-name.toml").into(),
+            ],
+            env: vec![],
+            label: format!("Recorded {name}"),
+            cli: None,
+            stdin_secret: None,
+        };
+        app.job = Some((op, Job::replayed(spec, &fixture(name))));
+        app.harvested = false;
+        app.harvest();
+    }
+
+    fn last_result(name: &str) -> serde_json::Value {
+        let text = fixture(name);
+        let line = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap();
+        serde_json::from_str(line).unwrap()
+    }
+
+    /// Every page with real reports loaded: catalogs, previews, plans,
+    /// retention plans, diagnostics and activity logs with long paths.
+    #[test]
+    fn every_page_with_real_reports_fits_the_minimum_window() {
+        let mut app = test_app();
+        let s = &mut app.settings;
+        for field in [
+            &mut s.generations_dir,
+            &mut s.crate_catalog_path,
+            &mut s.crate_output,
+            &mut s.crate_previous,
+            &mut s.crate_generations_dir,
+            &mut s.crate_generation,
+            &mut s.publish_source,
+            &mut s.publish_url,
+            &mut s.publish_ca,
+            &mut s.network.extra_ca_file,
+        ] {
+            *field = format!("{LONG}/a-folder-or-file-with-a-long-name");
+        }
+        let mut problems = Vec::new();
+        let mut check = |app: &mut App, what: &str| problems.extend(overflow(app, what));
+
+        app.page = Page::Network;
+        replay(&mut app, Op::InspectCa, "inspect-ca.jsonl");
+        replay(&mut app, Op::CheckNetwork, "check-network.jsonl");
+        check(
+            &mut app,
+            "Network with a connection test and certificate details",
+        );
+
+        app.page = Page::CrateCatalog;
+        replay(&mut app, Op::CrateLoad, "catalog.jsonl");
+        replay(&mut app, Op::CratePaste, "paste.jsonl");
+        let refused = last_result("import-refused.jsonl")["error"]["report"].clone();
+        app.locks.show_test_preview(
+            vec![
+                (
+                    "legacy-tool".into(),
+                    format!("{LONG}/legacy-tool/Cargo.lock"),
+                ),
+                ("vendor-app".into(), format!("{LONG}/vendor-app/Cargo.lock")),
+                ("service-b".into(), format!("{LONG}/service-b/Cargo.lock")),
+            ],
+            refused,
+        );
+        check(
+            &mut app,
+            "Crate catalog with paste refusals and a refused Cargo.lock import",
+        );
+
+        app.page = Page::CrateSync;
+        replay(&mut app, Op::CratePreview, "crate-preview.jsonl");
+        replay(&mut app, Op::CrateClientConfig, "client.jsonl");
+        replay(&mut app, Op::CrateSync, "crate-sync.jsonl");
+        check(
+            &mut app,
+            "Crate preview & sync with a preview, a finished download and client setup",
+        );
+
+        app.page = Page::CrateRetention;
+        replay(&mut app, Op::CrateLoad, "catalog.jsonl");
+        replay(&mut app, Op::CrateDiscover, "generations.jsonl");
+        replay(&mut app, Op::CrateRetentionPreview, "retention-plan.jsonl");
+        check(
+            &mut app,
+            "Crate retention with generations and a removal preview",
+        );
+
+        app.page = Page::Generations;
+        replay(&mut app, Op::Discover, "generations.jsonl");
+        check(&mut app, "Generations with a listing");
+
+        app.page = Page::Plan;
+        replay(&mut app, Op::Plan, "plan.jsonl");
+        check(&mut app, "Plan preview with a real plan");
+
+        app.page = Page::Sync;
+        replay(&mut app, Op::Sync, "crate-sync.jsonl");
+        check(&mut app, "Sync with a finished download log");
+
+        app.page = Page::Publish;
+        replay(&mut app, Op::Publish, "crate-sync.jsonl");
+        check(&mut app, "Publish with an activity log");
+
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn first_window_fits_the_monitor_but_not_below_the_minimum() {
+        let wanted = egui::Vec2::from(crate::DEFAULT_INNER_SIZE);
+        assert_eq!(
+            fitted_inner_size(wanted, egui::vec2(1920.0, 1080.0)),
+            wanted
+        );
+        // The Windows CI runner's 1024x768 screen.
+        assert_eq!(
+            fitted_inner_size(wanted, egui::vec2(1024.0, 768.0)),
+            egui::vec2(1008.0, 672.0)
+        );
+        // 1366x768 at 125% scaling is 1093x614 points.
+        assert_eq!(
+            fitted_inner_size(wanted, egui::vec2(1093.0, 614.0)),
+            egui::vec2(1077.0, 600.0)
+        );
+        assert_eq!(
+            fitted_inner_size(wanted, egui::vec2(800.0, 500.0)),
+            egui::vec2(900.0, 600.0)
+        );
+    }
+
+    #[test]
+    fn every_page_fits_the_minimum_window_without_horizontal_scrolling() {
+        let mut app = test_app();
+        let mut problems = Vec::new();
+        for page in PAGES {
+            app.page = page;
+            problems.extend(overflow(&mut app, &format!("{page:?}")));
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 }

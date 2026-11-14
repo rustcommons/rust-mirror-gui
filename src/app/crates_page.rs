@@ -300,6 +300,8 @@ impl App {
             .num_columns(7)
             .spacing([12.0, 3.0])
             .show(ui, |ui| {
+                // Table cells keep their width; long cells wrap explicitly.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 for h in [
                     "Name (alias)",
                     "Crate",
@@ -775,7 +777,9 @@ impl App {
                     .num_columns(6)
                     .spacing([12.0, 3.0])
                     .show(ui, |ui| {
-                        for h in ["Crate", "Version", "Size", "Flags", "Included because", ""] {
+                        // Table cells keep their width; long cells wrap explicitly.
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        for h in ["Crate", "Version", "Size", "Flags", "", "Included because"] {
                             ui.label(RichText::new(h).strong());
                         }
                         ui.end_row();
@@ -798,7 +802,11 @@ impl App {
                             if r["retained_from_previous"] == json!(true) {
                                 flags.push("kept from previous");
                             }
-                            ui.label(flags.join(", "));
+                            // A bounded column, so the reason keeps room.
+                            ui.vertical(|ui| {
+                                ui.set_max_width(140.0);
+                                ui.add(egui::Label::new(flags.join(", ")).wrap());
+                            });
                             let roots = list(&r["root_aliases"]);
                             let why = if !roots.is_empty() {
                                 format!("listed in catalog ({})", roots.join(", "))
@@ -817,10 +825,11 @@ impl App {
                                 (false, false) => format!("Cargo.lock: {}", locks.join(", ")),
                                 (false, true) => format!("{why}; Cargo.lock: {}", locks.join(", ")),
                             };
-                            ui.label(why);
                             if ui.small_button("Why?").clicked() {
                                 explain = Some((s(r, "name"), s(r, "version")));
                             }
+                            // The reason is last so it can wrap on narrow windows.
+                            ui.add(egui::Label::new(why).wrap());
                             ui.end_row();
                         }
                     });
@@ -953,7 +962,7 @@ impl App {
                 });
                 if let Some(cfg) = self.crates.client_config.clone() {
                     ui.label(RichText::new("Add this to the project's .cargo/config.toml (create the file if needed):").strong());
-                    egui::Grid::new("cfg-paths").num_columns(2).show(ui, |ui| {
+                    egui::Grid::new("cfg-paths").num_columns(2).min_col_width(110.0).show(ui, |ui| {
                         ui.label("Windows");
                         ui.label(RichText::new("<project>\\.cargo\\config.toml").monospace());
                         ui.end_row();
