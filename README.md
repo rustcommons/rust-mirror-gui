@@ -16,13 +16,14 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.4.0, Cargo.lock import and crate retention.** Import projects'
+**Status: 0.4.1.** 0.4.1 makes every page usable on small windows and
+scaled displays. **0.4.0 added Cargo.lock import and crate retention:** import projects'
 Cargo.lock files so the mirror holds exactly the crates.io versions they
 build with, and remove old crate mirrors with a preview and a typed
 confirmation. It builds in rust-mirror 0.5.0. Crate mirroring (0.3.0) and the
 corporate-network features (0.2.0) are unchanged. Remote Desktop, screen
 readers and Windows/macOS runtime behavior are not yet verified; see
-[known limits](docs/releases/v0.4.0.md#validation-and-limits).
+[known limits](docs/releases/v0.4.1.md#validation-and-limits).
 
 ## Install
 
@@ -104,7 +105,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

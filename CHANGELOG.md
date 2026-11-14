@@ -13,6 +13,35 @@
   build offline from the published mirror, and captures the window on a
   GPU-less Windows Server. See the [record](docs/evals/2026-11-14-windows-qualification.md).
 
+## [0.4.1] - 2026-11-14
+
+Narrow windows and display scaling. The built-in engine is still
+rust-mirror 0.5.0. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.1.md).
+
+- **Fixed: parts of pages could not be reached on narrow windows.** On a
+  window narrower than about 1280 points, the Selections page's right
+  column was cut off (for example **Refresh** and the "Other hosts" hint),
+  with no way to scroll to it. Every page now stays fully usable down to the
+  minimum window size (900×600 points), also at 125% and 150% display
+  scaling:
+  - the page area scrolls both ways, so nothing is out of reach;
+  - hint lines, "Same as" lines and long values wrap instead of running off
+    the page;
+  - Selections puts its two columns under each other on narrow windows;
+  - tables keep their columns and wrap their last column; long paths,
+    reasons and file names were moved to the last column;
+  - the top bar's **Show** button comes before the operation status, and a
+    long status is shortened with "…" (the full text is in a tooltip and on
+    the operation's page).
+- **The first window fits the screen.** It no longer opens larger than the
+  monitor (for example 1280×860 on a 1024×768 screen); it shrinks to fit,
+  leaving room for the taskbar, but never below the minimum size.
+- Testing: automated layout checks render every page at 900×600 points, at
+  100%, 125% and 150% scaling, empty and with real reports recorded from the
+  worker. Windows CI captures the first window and the window at its minimum
+  size.
+
 ## [0.4.0] - 2026-11-13
 
 Cargo.lock import and crate retention. The built-in engine is now
