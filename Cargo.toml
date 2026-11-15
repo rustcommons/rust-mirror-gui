@@ -9,7 +9,7 @@ repository = "https://github.com/rustcommons/rust-mirror-gui"
 readme = "README.md"
 keywords = ["rustup", "mirror", "offline", "gui", "toolchain"]
 categories = ["development-tools", "gui"]
-include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
+include = ["src/**", "tests/**", "assets/**", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE"]
 default-run = "rust-mirror-gui"
 
 [[bin]]

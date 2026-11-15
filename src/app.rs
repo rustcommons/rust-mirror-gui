@@ -89,6 +89,7 @@ pub struct App {
 
 impl App {
     pub fn new(ctx: &egui::Context) -> Self {
+        crate::fonts::install(ctx);
         let mut app = Self::with_settings(settings::load());
         app.check_backend(ctx);
         app
@@ -2237,6 +2238,7 @@ mod layout_tests {
     /// panel's content size and viewport after layout has settled.
     fn render(app: &mut App, w: f32, h: f32, ppp: f32) -> (egui::Vec2, egui::Rect) {
         let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
         for _ in 0..3 {
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(

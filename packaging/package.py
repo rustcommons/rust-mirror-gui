@@ -46,7 +46,7 @@ Compare the archive's SHA-256 with the SHA256SUMS file on the release page:
 With the GitHub CLI you can also check where it was built:
   gh attestation verify {archive} --repo rustcommons/rust-mirror-gui
 
-License: Apache-2.0 (see LICENSE).
+License: Apache-2.0 (see LICENSE).{font_note}
 """
 
 RUN = {
@@ -58,11 +58,11 @@ It needs glibc {glibc} or newer (its highest GLIBC_ symbol version), for
 example RHEL, AlmaLinux or Rocky Linux 8, Ubuntu 20.04, Debian 10, SLES 15 SP4 or
 newer. It was built on AlmaLinux 8 (glibc {glibc_built}) and tested to start
 on AlmaLinux 8 and Ubuntu 20.04.
-The window needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver,
-xkbcommon and a system font for symbols such as the check mark. Desktop distributions already have them. On a minimal or
+The window needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver and
+xkbcommon; its fonts are built in. Desktop distributions already have them. On a minimal or
 GPU-less machine, install:
-  Debian/Ubuntu:  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig
-  RHEL family:    sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig""",
+  Debian/Ubuntu:  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6
+  RHEL family:    sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi""",
     "macos": """Extract the folder and run ./rust-mirror-gui from Terminal.
 macOS 11 or newer ({arch}).""",
 }
@@ -86,6 +86,7 @@ def main():
     p.add_argument("--glibc", default="", help="highest GLIBC symbol the binary needs (Linux)")
     p.add_argument("--glibc-built", default="", help="glibc of the build runner (Linux)")
     p.add_argument("--source", default="", help="tag and commit the binary was built from")
+    p.add_argument("--font-license", default="", help="license of the font built into the program")
     args = p.parse_args()
     target = args.target
     family = "windows" if "windows" in target else "macos" if "apple" in target else "linux"
@@ -103,6 +104,7 @@ def main():
         source=args.source or "(not recorded)",
         unsigned=UNSIGNED[family],
         archive=archive,
+        font_note="\nThe program contains the DejaVu Sans font, under its own free license\n(see LICENSE-DejaVu.txt)." if args.font_license else "",
     )
     if family == "windows":
         readme = readme.replace("\n", "\r\n")
@@ -111,6 +113,8 @@ def main():
         ("LICENSE", pathlib.Path(args.license).read_bytes(), 0o644),
         ("README.txt", readme.encode("utf-8"), 0o644),
     ]
+    if args.font_license:
+        files.insert(2, ("LICENSE-DejaVu.txt", pathlib.Path(args.font_license).read_bytes(), 0o644))
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     path = out / archive

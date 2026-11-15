@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **Fonts are built in.** The app bundles DejaVu Sans 2.37 (free license, see
+  `NOTICE`) after egui's own fonts and no longer looks up system fonts. On
+  minimal Linux systems without fontconfig or fonts, symbols such as ✔, ✖
+  and ⚠ showed as empty boxes; they now always draw. fontconfig and DejaVu
+  are no longer in the documented Linux runtime packages. Prebuilt archives
+  include `LICENSE-DejaVu.txt`. The executable is about 0.8 MB larger.
+
 ## [0.4.3] - 2026-11-15
 
 The window opens on Linux machines without a GPU that have an older Mesa,

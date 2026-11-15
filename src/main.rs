@@ -20,6 +20,9 @@ fn gui() -> eframe::Result {
             .with_title("rust-mirror GUI")
             .with_inner_size(rust_mirror_gui::DEFAULT_INNER_SIZE)
             .with_min_inner_size(rust_mirror_gui::MIN_INNER_SIZE),
+        // The bundled fonts cover every symbol the app shows; never look up
+        // system fonts (on Linux that needed fontconfig and an installed font).
+        system_font_fallback: false,
         ..Default::default()
     };
     prefer_direct3d12_on_windows(&mut options);
