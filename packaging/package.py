@@ -30,6 +30,15 @@ Release notes for this version:
 https://github.com/rustcommons/rust-mirror-gui/blob/v{version}/docs/releases/v{version}.md
 Built from: {source}
 
+Supported platforms
+-------------------
+Windows x64 (10, 11, Server 2022/2025), macOS 11 or newer, and x86-64 Linux
+with glibc 2.28 or newer (RHEL-family 8, Ubuntu 20.04, Debian 10, SLES 15 SP4
+or newer). Older Linux, 32-bit systems, ARM Linux and Windows on ARM are not
+supported: use the rust-mirror command line there
+(https://github.com/rustcommons/rust-mirror). What is tested and the known
+limits: https://github.com/rustcommons/rust-mirror-gui#supported-platforms
+
 Run it
 ------
 {run}

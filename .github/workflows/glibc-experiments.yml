@@ -10,6 +10,8 @@ name: glibc experiments (CI only)
 on:
   workflow_dispatch:
   pull_request:
+    # Only when a PR is opened: later pushes don't rerun this measurement.
+    types: [opened]
     paths:
       - .github/workflows/glibc-experiments.yml
       - qualification/glibc/**

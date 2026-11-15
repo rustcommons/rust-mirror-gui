@@ -27,6 +27,43 @@ and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.m
 macOS runtime and screen readers are not yet verified; see
 [known limits](docs/releases/v0.4.3.md#validation-and-limits).
 
+## Supported platforms
+
+**Supported.** "Tested" means the release workflow checks it for every
+release (Windows Server 2022, macOS, AlmaLinux 8, Ubuntu 20.04), or a
+recorded qualification covered it (Windows Server 2025, Remote Desktop,
+xrdp, Windows 11):
+
+| Platform | Tested | Expected to work, not tested |
+| --- | --- | --- |
+| Windows x64 | Windows Server 2022 and 2025, with and without a GPU, including Remote Desktop; Windows 11 with a GPU | Windows 10 |
+| macOS 11 or newer | Apple silicon and Intel: the program starts and its engine runs | The window on macOS: not yet tested |
+| Linux x86-64, glibc 2.28 or newer, X11 | AlmaLinux 8, Ubuntu 20.04; software rendering (no GPU), including xrdp | RHEL and Rocky Linux 8 (same as AlmaLinux 8), newer Ubuntu and RHEL-family releases, Debian 10 or newer, SLES 15 SP4 or newer, Wayland |
+
+- **Window:** usable down to 900×600 at 100%, 125% and 150% scaling.
+- **Rendering:** a GPU or software rendering (Remote Desktop, xrdp, virtual
+  machines without a GPU).
+
+**Not supported: use the [rust-mirror command line](https://github.com/rustcommons/rust-mirror)
+instead.** It does everything the window does.
+- **Linux older than glibc 2.28:** RHEL/CentOS 7, Ubuntu 16.04 and 18.04,
+  SLES 12. The CLI's static Linux download runs there. The GUI may start on
+  some of them (see the [measurements](docs/evals/2026-11-15-glibc-experiments.md)),
+  but it isn't supported.
+- **32-bit systems, ARM Linux, Windows on ARM:** there are no GUI downloads.
+  The CLI has [downloads](https://github.com/rustcommons/rust-mirror/releases/latest)
+  for x86-64 Linux, Windows x64 and macOS. On other systems, use
+  `cargo install rust-mirror --locked`.
+
+**Known limits:**
+- **Software rendering on some processors:** on AMD EPYC machines without a
+  GPU, the window uses about 66% of one processor core while a download
+  runs. It is 0% when idle
+  ([record](docs/evals/2026-11-15-remote-desktop.md)).
+- **Screen readers** are not tested.
+- **Downloads are not code-signed:** Windows and macOS ask before the first
+  run (see below).
+
 ## Install
 
 ### Download a prebuilt binary

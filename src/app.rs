@@ -535,6 +535,16 @@ impl App {
              second. If the heartbeat stops, this window tells you, and you can stop or end the worker \
              without losing the window. Each page also shows the equivalent rust-mirror command.",
         );
+        ui.add_space(12.0);
+        ui.label(RichText::new("Supported platforms").strong());
+        ui.label(
+            "Windows x64, macOS 11 or newer, and x86-64 Linux with glibc 2.28 or newer. On older \
+             Linux, 32-bit systems, ARM Linux and Windows on ARM, use the rust-mirror command line.",
+        );
+        ui.hyperlink_to(
+            "What is tested, and known limits",
+            "https://github.com/rustcommons/rust-mirror-gui#supported-platforms",
+        );
     }
 
     /// Selections page, left part: the list of selections.
