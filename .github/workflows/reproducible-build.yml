@@ -31,8 +31,13 @@ jobs:
   first:
     needs: version
     uses: $/.github/workflows/build-binaries.yml
+    # GitHub requires a caller to grant what the reusable workflow's jobs
+    # declare, even a job that won't run. Only its attest job uses these,
+    # and it runs only with attest: true (publishing), never here.
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     with:
       ref: ${{ github.sha }}
       version: ${{ needs.version.outputs.version }}
@@ -43,8 +48,13 @@ jobs:
   second:
     needs: version
     uses: $/.github/workflows/build-binaries.yml
+    # GitHub requires a caller to grant what the reusable workflow's jobs
+    # declare, even a job that won't run. Only its attest job uses these,
+    # and it runs only with attest: true (publishing), never here.
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     with:
       ref: ${{ github.sha }}
       version: ${{ needs.version.outputs.version }}

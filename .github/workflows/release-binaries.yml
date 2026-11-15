@@ -118,12 +118,17 @@ jobs:
         run: python3 scripts/check-release-docs.py --repo "$REPO"
 
   build-dry-run:
-    # Dry runs: build, test, package and checksum; no attestation, read-only.
+    # Dry runs: build, test, package and checksum; no attestation.
     needs: prepare
     if: needs.prepare.outputs.dry_run == 'true'
     uses: $/.github/workflows/build-binaries.yml
+    # GitHub requires a caller to grant what the reusable workflow's jobs
+    # declare, even a job that won't run. Only its attest job uses these,
+    # and it runs only with attest: true (publishing), never here.
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     with:
       ref: ${{ needs.prepare.outputs.ref }}
       version: ${{ needs.prepare.outputs.version }}

@@ -119,9 +119,10 @@ asset names and archive layout are shared with rust-mirror.
   version.
 - **Least privilege:**
   - only the publish job can write contents (upload assets);
-  - only the attest job inside `build-binaries.yml` can request an OIDC
-    token and write attestations, and only when publishing;
-  - dry runs call the build read-only;
+  - only the attest job inside `build-binaries.yml` requests an OIDC token
+    and writes attestations, and it runs only when publishing. (GitHub
+    makes every caller grant what a reusable workflow's jobs declare, so
+    dry runs grant it too, but there the attest job never runs.);
   - all other jobs are read-only.
 - **Verified after upload:** the publish job downloads the live assets,
   checks them against `SHA256SUMS`, and verifies every attestation.
