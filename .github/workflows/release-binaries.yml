@@ -35,6 +35,7 @@ on:
       - Cargo.lock
       - .github/workflows/release-binaries.yml
       - .github/workflows/build-binaries.yml
+      - .github/workflows/build-binaries-core.yml
       - packaging/**
       - qualification/linux-launch.sh
       - qualification/xwd2png.py
@@ -118,25 +119,19 @@ jobs:
         run: python3 scripts/check-release-docs.py --repo "$REPO"
 
   build-dry-run:
-    # Dry runs: build, test, package and checksum; no attestation.
+    # Dry runs: build, test, package and checksum; read-only, nothing signed.
     needs: prepare
     if: needs.prepare.outputs.dry_run == 'true'
-    uses: $/.github/workflows/build-binaries.yml
-    # GitHub requires a caller to grant what the reusable workflow's jobs
-    # declare, even a job that won't run. Only its attest job uses these,
-    # and it runs only with attest: true (publishing), never here.
+    uses: $/.github/workflows/build-binaries-core.yml
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     with:
       ref: ${{ needs.prepare.outputs.ref }}
       version: ${{ needs.prepare.outputs.version }}
       source-label: ${{ needs.prepare.outputs.pr == 'true' && 'pull request (dry run, not a release)' || needs.prepare.outputs.tag }}
-      attest: false
 
   build:
-    # Publishing: the reusable workflow also attests (signed by it, SLSA L3).
+    # Publishing: build-binaries.yml builds and signs (SLSA Build L3).
     needs: prepare
     if: needs.prepare.outputs.dry_run == 'false'
     uses: $/.github/workflows/build-binaries.yml
@@ -148,7 +143,6 @@ jobs:
       ref: ${{ needs.prepare.outputs.ref }}
       version: ${{ needs.prepare.outputs.version }}
       source-label: ${{ needs.prepare.outputs.tag }}
-      attest: true
 
   publish:
     needs: [prepare, build]

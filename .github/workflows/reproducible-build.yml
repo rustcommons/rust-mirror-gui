@@ -1,7 +1,7 @@
 name: Reproducible build check
 
 # Builds the same commit twice, on separate fresh runners, with exactly the
-# release build (build-binaries.yml), then compares the SHA-256 of every
+# release build (build-binaries-core.yml), then compares the SHA-256 of every
 # executable and every archive. It reports what it finds (in the job summary
 # and reproducibility.json); it does not claim bit-identical builds in advance.
 # The SBOM is not compared: CycloneDX gives every document a new serial number
@@ -13,7 +13,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/reproducible-build.yml
-      - .github/workflows/build-binaries.yml
+      - .github/workflows/build-binaries-core.yml
 permissions:
   contents: read
 jobs:
@@ -30,14 +30,9 @@ jobs:
 
   first:
     needs: version
-    uses: $/.github/workflows/build-binaries.yml
-    # GitHub requires a caller to grant what the reusable workflow's jobs
-    # declare, even a job that won't run. Only its attest job uses these,
-    # and it runs only with attest: true (publishing), never here.
+    uses: $/.github/workflows/build-binaries-core.yml
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     with:
       ref: ${{ github.sha }}
       version: ${{ needs.version.outputs.version }}
@@ -47,14 +42,9 @@ jobs:
 
   second:
     needs: version
-    uses: $/.github/workflows/build-binaries.yml
-    # GitHub requires a caller to grant what the reusable workflow's jobs
-    # declare, even a job that won't run. Only its attest job uses these,
-    # and it runs only with attest: true (publishing), never here.
+    uses: $/.github/workflows/build-binaries-core.yml
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     with:
       ref: ${{ github.sha }}
       version: ${{ needs.version.outputs.version }}

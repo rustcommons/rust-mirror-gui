@@ -12,8 +12,9 @@
     with no safe upgrade, are listed there with reasons.
   - OpenSSF Scorecard runs on `main` and weekly.
 - **Release builds** (from the next release on):
-  - The build moved into the reusable `build-binaries.yml`, which signs
-    the attestations (SLSA Build L3).
+  - The build moved into the reusable, read-only `build-binaries-core.yml`.
+    For releases, `build-binaries.yml` runs it and signs the attestations
+    (SLSA Build L3).
   - Each release gets a CycloneDX SBOM (`rust-mirror-gui-X.Y.Z.cdx.json`),
     listed in `SHA256SUMS` and attested for every archive.
   - `reproducible-build.yml` builds twice and compares the results.

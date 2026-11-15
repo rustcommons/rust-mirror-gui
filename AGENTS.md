@@ -89,8 +89,9 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
     advisories, allowed licenses, bans, crates.io-only sources).
   A new dependency's license must already be on the allowlist, or the owner
   must approve adding it.
-- **Release builds** run only in the reusable `build-binaries.yml`, which
-  signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
+- **Release builds** run only in the reusable `build-binaries-core.yml`
+  (read-only; also used by dry runs). For a release, `build-binaries.yml`
+  runs it and then signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
   compares two independent builds weekly.
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
 - **Trusted Publishing:** `trusted-publishing.yml` (environment `crates-io`) is

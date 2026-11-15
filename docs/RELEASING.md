@@ -26,8 +26,10 @@ publishes from the owner's machine.
 4. **Binaries:** pushing the tag starts
    [`release-binaries.yml`](../.github/workflows/release-binaries.yml). It
    waits for the release from step 3, has the reusable
-   [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build and
-   sign them, then attaches the binaries described below. The same tag push
+   [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build
+   them (with
+   [`build-binaries-core.yml`](../.github/workflows/build-binaries-core.yml))
+   and sign them, then attaches the binaries described below. The same tag push
    also starts [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml).
    While the owner publishes by hand (step 2), it only checks that the
    published crate is the tag's source. Check its run, and record it in the publication record.
@@ -87,7 +89,9 @@ asset names and archive layout are shared with rust-mirror.
     attestation (`actions/attest-build-provenance` v4.2.2);
   - every archive gets an SBOM attestation (`actions/attest-sbom` v4.1.0);
   - both are signed inside the reusable `build-binaries.yml`, isolated from
-    the calling workflow, as GitHub describes for SLSA v1 Build Level 3;
+    the calling workflow, as GitHub describes for SLSA v1 Build Level 3. It
+    runs the build in the read-only `build-binaries-core.yml` first; the
+    same core is what dry runs use;
   - they are verified before and after the upload.
 
   Users verify with:
@@ -100,7 +104,7 @@ asset names and archive layout are shared with rust-mirror.
   0.4.3 and 0.5.0 were signed by `release-binaries.yml` itself (use that
   file name as the signer) and have no SBOM.
 - **Reproducibility:** `reproducible-build.yml` builds the same commit twice
-  on fresh runners with `build-binaries.yml` and compares every executable
+  on fresh runners with `build-binaries-core.yml` and compares every executable
   and archive (weekly, and on PRs that change the build). Its results are
   recorded as they are; see `docs/evals/`.
 - **What a backfill's provenance names:** it records the workflow run's
@@ -121,10 +125,10 @@ asset names and archive layout are shared with rust-mirror.
   version.
 - **Least privilege:**
   - only the publish job can write contents (upload assets);
-  - only the attest job inside `build-binaries.yml` requests an OIDC token
-    and writes attestations, and it runs only when publishing. (GitHub
-    makes every caller grant what a reusable workflow's jobs declare, so
-    dry runs grant it too, but there the attest job never runs.);
+  - only the attest job in `build-binaries.yml` requests an OIDC token and
+    writes attestations, and that workflow runs only when publishing;
+  - dry runs and the reproducibility check call the read-only
+    `build-binaries-core.yml`, which has no signing job;
   - all other jobs are read-only.
 - **Verified after upload:** the publish job downloads the live assets,
   checks them against `SHA256SUMS`, and verifies every attestation.
