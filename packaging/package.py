@@ -28,6 +28,7 @@ rust-mirror. Source, documentation and release notes:
 https://github.com/rustcommons/rust-mirror-gui
 Release notes for this version:
 https://github.com/rustcommons/rust-mirror-gui/blob/v{version}/docs/releases/v{version}.md
+Built from: {source}
 
 Run it
 ------
@@ -52,9 +53,11 @@ RUN = {
     "windows": """Unzip the folder anywhere and double-click rust-mirror-gui.exe.
 Windows 10 or 11, or Windows Server 2022 or newer; no installation needed.""",
     "linux": """Extract the folder and run ./rust-mirror-gui from it.
-Built on Ubuntu 22.04; needs glibc {glibc} or newer. The window needs a
-Vulkan or OpenGL driver and xkbcommon at run time. Desktop distributions
-already have them. On a minimal or GPU-less Debian/Ubuntu machine, install:
+Built and tested on Ubuntu 22.04 (glibc {glibc_built}); the highest glibc
+symbol it uses is GLIBC_{glibc}, so glibc {glibc_built} or newer is supported.
+The window needs a Vulkan or OpenGL driver and xkbcommon at run time.
+Desktop distributions already have them. On a minimal or GPU-less
+Debian/Ubuntu machine, install:
   sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1""",
     "macos": """Extract the folder and run ./rust-mirror-gui from Terminal.
 macOS 11 or newer ({arch}).""",
@@ -76,7 +79,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for a in ("binary", "license", "name", "version", "target", "out"):
         p.add_argument("--" + a, required=True)
-    p.add_argument("--glibc", default="")
+    p.add_argument("--glibc", default="", help="highest GLIBC symbol the binary needs (Linux)")
+    p.add_argument("--glibc-built", default="", help="glibc of the build runner (Linux)")
+    p.add_argument("--source", default="", help="tag and commit the binary was built from")
     args = p.parse_args()
     target = args.target
     family = "windows" if "windows" in target else "macos" if "apple" in target else "linux"
@@ -90,7 +95,8 @@ def main():
         version=args.version,
         target=target,
         underline="=" * len(title),
-        run=RUN[family].format(glibc=args.glibc or "2.35", arch="Apple silicon" if target.startswith("aarch64") else "Intel"),
+        run=RUN[family].format(glibc=args.glibc or "?", glibc_built=args.glibc_built or "2.35", arch="Apple silicon" if target.startswith("aarch64") else "Intel"),
+        source=args.source or "(not recorded)",
         unsigned=UNSIGNED[family],
         archive=archive,
     )

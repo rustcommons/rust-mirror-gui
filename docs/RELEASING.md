@@ -57,8 +57,14 @@ asset names and archive layout are shared with rust-mirror.
   - on Windows, the window is also launched and captured with PrintWindow,
     and must not be blank.
 - **Attestations:** every archive and `SHA256SUMS` get a GitHub artifact
-  attestation (Sigstore build provenance). Verify with
+  attestation (Sigstore build provenance), using
+  `actions/attest-build-provenance` v4.2.2 pinned by commit. They are
+  verified before and after the upload. Users verify with
   `gh attestation verify <file> --repo rustcommons/rust-mirror-gui`.
+- **What a backfill's provenance names:** it records the workflow run's
+  revision (main), not the tagged commit. Each archive's `README.txt`
+  therefore states the tag and commit it was built from ("Built from"), and
+  that file is inside the attested archive.
 - **Not code-signed:** users see Windows SmartScreen and macOS Gatekeeper
   prompts. The README's install section says what to do.
 

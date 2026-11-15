@@ -163,6 +163,8 @@ jobs:
           min=$(objdump -T "$exe" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -uV | tail -1)
           echo "minimum glibc: $min"; echo "linked libraries:"; objdump -p "$exe" | awk '/NEEDED/ {print "  " $2}'
           echo "min=$min" >> "$GITHUB_OUTPUT"
+          built=$(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$')
+          echo "build runner glibc: $built"; echo "built=$built" >> "$GITHUB_OUTPUT"
       - name: Architecture (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -173,7 +175,8 @@ jobs:
           exe="src/target/${{ matrix.target }}/release/$NAME"; [ -f "$exe.exe" ] && exe="$exe.exe"
           python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE --name "$NAME" \
             --version "${{ needs.prepare.outputs.version }}" --target "${{ matrix.target }}" --out dist \
-            --glibc "${{ steps.glibc.outputs.min }}"
+            --glibc "${{ steps.glibc.outputs.min }}" --glibc-built "${{ steps.glibc.outputs.built }}" \
+            --source "${{ needs.prepare.outputs.tag || 'pull request (dry run)' }} at commit $(git -C src rev-parse HEAD)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.target }}
@@ -242,9 +245,11 @@ jobs:
             fi
           done
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
+      - name: Verify the attestations before uploading
+        run: for f in dist/*; do gh attestation verify "$f" --repo "$REPO" > /dev/null && echo "attestation verified: $(basename "$f")"; done
       - name: Upload to the release (never replaces)
         run: gh release upload "$TAG" dist/* --repo "$REPO"
       - name: Verify the live assets
