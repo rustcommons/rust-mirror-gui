@@ -482,6 +482,18 @@ impl Job {
         });
     }
 
+    /// How long until the stalled warning is due (`None` once finished or
+    /// already stalled), so the window can redraw exactly then.
+    pub fn until_stalled(&self) -> Option<Duration> {
+        if self.finished() {
+            return None;
+        }
+        self.progress
+            .stall_after()
+            .checked_sub(self.last_event.elapsed())
+            .filter(|d| !d.is_zero())
+    }
+
     /// The process has exited and all of its output has been read.
     pub fn finished(&self) -> bool {
         self.exit.is_some() && self.stdout_closed
@@ -588,10 +600,20 @@ fn spawn_stdout_reader(
                     if text.trim().is_empty() {
                         continue;
                     }
-                    if tx.send(Msg::Event(Event::parse(&text))).is_err() {
+                    let event = Event::parse(&text);
+                    // Wake the window at once only for events that change what
+                    // it shows in a way that should not wait for its regular
+                    // redraw (a new stage, a retry wait, the final result).
+                    // Progress lines arrive hundreds of times a second and are
+                    // picked up by the regular redraw instead.
+                    let urgent =
+                        matches!(event, Event::Stage(_) | Event::Retry(_) | Event::Result(_));
+                    if tx.send(Msg::Event(event)).is_err() {
                         return;
                     }
-                    wake();
+                    if urgent {
+                        wake();
+                    }
                 }
                 Err(e) => break Some(format!("reading events failed: {e}")),
             }

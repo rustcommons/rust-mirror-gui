@@ -165,12 +165,14 @@ impl App {
 
     fn start(&mut self, ctx: &egui::Context, op: Op, spec: crate::job::Spec) {
         self.start_error = None;
-        // Worker output is not pushed to the window: while a job runs, the
+        // Progress output is not pushed to the window: while a job runs, the
         // window redraws on a fixed timer (`JOB_REPAINT_INTERVAL`) and reads
         // new output then. Redrawing on every line kept a software renderer
         // (Remote Desktop, no GPU) busy on several cores during a crate sync.
-        let _ = ctx;
-        match Job::start(spec, || {}) {
+        // Events that change the state (stage, retry, result, end of output)
+        // still wake the window at once.
+        let wake = ctx.clone();
+        match Job::start(spec, move || wake.request_repaint()) {
             Ok(job) => {
                 self.job = Some((op, job));
                 self.harvested = false;
@@ -224,7 +226,16 @@ impl App {
         }
         self.harvest();
         if self.job_running() || matches!(self.backend, Backend::Checking(_)) {
-            ctx.request_repaint_after(JOB_REPAINT_INTERVAL);
+            // Redraw on the regular tick, or sooner if the stalled warning
+            // becomes due before then, so it shows at once.
+            let stall = self
+                .job
+                .as_ref()
+                .and_then(|(_, j)| j.until_stalled())
+                .map(|d| d + Duration::from_millis(20));
+            ctx.request_repaint_after(
+                stall.map_or(JOB_REPAINT_INTERVAL, |d| d.min(JOB_REPAINT_INTERVAL)),
+            );
         }
         self.persist(false);
 
