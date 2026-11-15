@@ -85,11 +85,14 @@ asset names and archive layout are shared with rust-mirror.
 
 ### Dry runs and backfills
 
-- **Pull requests** that change the workflow or `packaging/` run a dry run
-  of their head:
+- **Pull requests** that change the workflow or `packaging/` dry-run a
+  backfill of the latest release:
+  - its tag and its source, with all of the tag checks;
   - build, smoke-test, package and checksum on all four targets;
-  - run the release guard read-only against the latest release;
+  - run the release guard read-only;
   - upload nothing.
+
+  Manual dispatch only works once the workflow is on `main`.
 - **Manual dispatch** (Actions → Release binaries → Run workflow):
   - `tag`: an existing release tag;
   - `dry_run`: true by default, which builds and verifies without uploading.

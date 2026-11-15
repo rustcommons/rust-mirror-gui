@@ -12,8 +12,8 @@ name: Release binaries
 #   post-publication step creates right after the tag);
 # - workflow_dispatch: `tag` (an existing release tag) and `dry_run` (true by
 #   default: build and verify everything, upload nothing) for backfills;
-# - pull_request that changes this workflow or packaging/: dry run of the
-#   pull request's head (no tag, nothing uploaded).
+# - pull_request that changes this workflow or packaging/: dry run of a
+#   backfill of the latest release (its tag, all checks, nothing uploaded).
 # See docs/RELEASING.md.
 on:
   push:
@@ -54,12 +54,14 @@ jobs:
           EVENT: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           case "$EVENT" in
             push) tag="$GITHUB_REF_NAME"; dry=false; ref="$GITHUB_SHA" ;;
             workflow_dispatch) tag="$INPUT_TAG"; dry="$INPUT_DRY_RUN"; ref="$INPUT_TAG" ;;
-            pull_request) tag=""; dry=true; ref="$PR_HEAD" ;;
+            # A pull request dry-runs a backfill of the latest release:
+            # the tagged source, all tag checks, nothing uploaded.
+            pull_request) tag=$(gh release view --repo "$REPO" --json tagName -q .tagName); dry=true; ref="$tag" ;;
           esac
           if [ -n "$tag" ] && ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::not a release tag: $tag"; exit 1
@@ -176,7 +178,7 @@ jobs:
           python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE --name "$NAME" \
             --version "${{ needs.prepare.outputs.version }}" --target "${{ matrix.target }}" --out dist \
             --glibc "${{ steps.glibc.outputs.min }}" --glibc-built "${{ steps.glibc.outputs.built }}" \
-            --source "${{ needs.prepare.outputs.tag || 'pull request (dry run)' }} at commit $(git -C src rev-parse HEAD)"
+            --source "${{ needs.prepare.outputs.tag }} at commit $(git -C src rev-parse HEAD)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.target }}
@@ -249,7 +251,8 @@ jobs:
         with:
           subject-path: dist/*
       - name: Verify the attestations before uploading
-        run: for f in dist/*; do gh attestation verify "$f" --repo "$REPO" > /dev/null && echo "attestation verified: $(basename "$f")"; done
+        run: |
+          for f in dist/*; do gh attestation verify "$f" --repo "$REPO" > /dev/null && echo "attestation verified: $(basename "$f")"; done
       - name: Upload to the release (never replaces)
         run: gh release upload "$TAG" dist/* --repo "$REPO"
       - name: Verify the live assets
