@@ -1,0 +1,9 @@
+rust-mirror-gui
+Copyright the rust-mirror-gui authors. Licensed under the Apache License,
+Version 2.0 (see LICENSE).
+
+This program contains the DejaVu Sans font, version 2.37
+(https://dejavu-fonts.github.io/), built into the executable from
+assets/fonts/DejaVuSans.ttf. DejaVu fonts are based on Bitstream Vera; their
+license is in assets/fonts/LICENSE-DejaVu.txt (in prebuilt downloads:
+LICENSE-DejaVu.txt).

@@ -50,7 +50,8 @@ asset names and archive layout are shared with rust-mirror.
 | `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name |
 
 - **Archive layout:** each archive holds one folder,
-  `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE` and
+  `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
+  `LICENSE-DejaVu.txt` (the built-in font's license, from 0.5.0 on) and
   `README.txt`. `packaging/package.py` makes the archives with fixed
   timestamps and permissions.
 - **How they are built:**
@@ -70,9 +71,10 @@ asset names and archive layout are shared with rust-mirror.
     and must not be blank;
   - on Linux, the packaged archive is unpacked in `almalinux:8` and
     `ubuntu:20.04` containers that have only the runtime packages README.txt
-    lists. It must start its worker, map the "rust-mirror GUI" window on
-    Xvfb and draw it (`qualification/linux-launch.sh`). Publishing waits
-    for this job.
+    lists. From 0.5.0 on, every system font directory and the fontconfig
+    settings are deleted first, to prove the built-in fonts suffice. It
+    must start its worker, map the "rust-mirror GUI" window on Xvfb and draw
+    it (`qualification/linux-launch.sh`). Publishing waits for this job.
 - **Attestations:** every archive and `SHA256SUMS` get a GitHub artifact
   attestation (Sigstore build provenance), using
   `actions/attest-build-provenance` v4.2.2 pinned by commit. They are

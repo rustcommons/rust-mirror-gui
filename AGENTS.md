@@ -63,6 +63,10 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 - On 2026-11-15 the owner authorized publishing 0.4.3 (the wgpu limits fix)
   to crates.io as the first release with prebuilt downloads, and decided not
   to backfill downloads for 0.4.2.
+- On 2026-11-15 the owner approved 0.5.0 and authorized its publication once
+  green: built-in fonts (DejaVu Sans, a bundled asset, owner-approved; no new
+  crate dependency), documented supported platforms, and CI-only glibc
+  experiments. The Linux download stays the glibc 2.28 build.
 
 ## Documentation and requirements traceability
 

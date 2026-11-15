@@ -89,6 +89,7 @@ pub struct App {
 
 impl App {
     pub fn new(ctx: &egui::Context) -> Self {
+        crate::fonts::install(ctx);
         let mut app = Self::with_settings(settings::load());
         app.check_backend(ctx);
         app
@@ -533,6 +534,16 @@ impl App {
              the rust-mirror library. The worker reports stages, files, byte counts and a heartbeat every \
              second. If the heartbeat stops, this window tells you, and you can stop or end the worker \
              without losing the window. Each page also shows the equivalent rust-mirror command.",
+        );
+        ui.add_space(12.0);
+        ui.label(RichText::new("Supported platforms").strong());
+        ui.label(
+            "Windows x64, macOS 11 or newer, and x86-64 Linux with glibc 2.28 or newer. On older \
+             Linux, 32-bit systems, ARM Linux and Windows on ARM, use the rust-mirror command line.",
+        );
+        ui.hyperlink_to(
+            "What is tested, and known limits",
+            "https://github.com/rustcommons/rust-mirror-gui#supported-platforms",
         );
     }
 
@@ -2237,6 +2248,7 @@ mod layout_tests {
     /// panel's content size and viewport after layout has settled.
     fn render(app: &mut App, w: f32, h: f32, ppp: f32) -> (egui::Vec2, egui::Rect) {
         let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
         for _ in 0..3 {
             let mut input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(

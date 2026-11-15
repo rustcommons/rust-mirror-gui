@@ -2,6 +2,7 @@
 //! child process through its JSON-lines event protocol.
 pub mod app;
 pub mod config;
+pub mod fonts;
 pub mod gpu;
 pub mod job;
 pub mod ops;

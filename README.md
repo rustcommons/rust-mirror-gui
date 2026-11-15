@@ -16,16 +16,57 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.4.3.** 0.4.3 is the first release with prebuilt downloads for
-Windows, Linux and macOS, and its window opens on Linux machines without a
-GPU that have an older Mesa (for example Ubuntu 20.04). 0.4.2 uses far less
+**Status: 0.5.0.** 0.5.0 builds its fonts in (no system fonts needed) and
+documents the [supported platforms](#supported-platforms). 0.4.3 is the
+first release with prebuilt downloads for Windows, Linux and macOS, and its
+window opens on Linux machines without a GPU that have an older Mesa (for
+example Ubuntu 20.04). 0.4.2 uses far less
 CPU while an operation runs (it matters most over Remote Desktop and without
 a GPU), handles large crate previews, and builds in rust-mirror 0.5.1. 0.4.1 made every page usable on
 small windows and scaled displays. 0.4.0 added Cargo.lock import and crate
 retention. Tested inside real Remote Desktop sessions on Windows Server 2022
 and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.md));
 macOS runtime and screen readers are not yet verified; see
-[known limits](docs/releases/v0.4.3.md#validation-and-limits).
+[known limits](docs/releases/v0.5.0.md#validation-and-limits).
+
+## Supported platforms
+
+**Supported.** "Tested" means the release workflow checks it for every
+release (Windows Server 2022, macOS, AlmaLinux 8, Ubuntu 20.04), or a
+recorded qualification covered it (Windows Server 2025, Remote Desktop,
+xrdp, Windows 11):
+
+| Platform | Tested | Expected to work, not tested |
+| --- | --- | --- |
+| Windows x64 | Windows Server 2022 and 2025, with and without a GPU, including Remote Desktop; Windows 11 with a GPU | Windows 10 |
+| macOS 11 or newer | Apple silicon and Intel: the program starts and its engine runs | The window on macOS: not yet tested |
+| Linux x86-64, glibc 2.28 or newer, X11 | AlmaLinux 8, Ubuntu 20.04; software rendering (no GPU), including xrdp | RHEL and Rocky Linux 8 (same as AlmaLinux 8), newer Ubuntu and RHEL-family releases, Debian 10 or newer, SLES 15 SP4 or newer, Wayland |
+
+- **Window:** usable down to 900×600 at 100%, 125% and 150% scaling.
+- **Rendering:** a GPU or software rendering (Remote Desktop, xrdp, virtual
+  machines without a GPU).
+
+**Not supported: use the [rust-mirror command line](https://github.com/rustcommons/rust-mirror)
+instead.** It does everything the window does.
+- **Linux older than glibc 2.28:** RHEL/CentOS 7, Ubuntu 16.04 and 18.04,
+  Debian 9, SLES 12. The CLI's static Linux download runs there; the GUI's
+  download does not start. A test build for glibc 2.17 drew its window
+  only on Debian 9, because older X and graphics libraries stop it
+  elsewhere ([measurements](docs/evals/2026-11-15-glibc-experiments.md)).
+  That build may work but is not published or supported.
+- **32-bit systems, ARM Linux, Windows on ARM:** there are no GUI downloads.
+  The CLI has [downloads](https://github.com/rustcommons/rust-mirror/releases/latest)
+  for x86-64 Linux, Windows x64 and macOS. On other systems, use
+  `cargo install rust-mirror --locked`.
+
+**Known limits:**
+- **Software rendering on some processors:** on AMD EPYC machines without a
+  GPU, the window uses about 66% of one processor core while a download
+  runs. It is 0% when idle
+  ([record](docs/evals/2026-11-15-remote-desktop.md)).
+- **Screen readers** are not tested.
+- **Downloads are not code-signed:** Windows and macOS ask before the first
+  run (see below).
 
 ## Install
 
@@ -50,7 +91,7 @@ so the Visual C++ Redistributable isn't required.
 
 ```powershell
 # Windows (PowerShell): compare with the line for this file in SHA256SUMS
-Get-FileHash .\rust-mirror-gui-0.4.3-x86_64-pc-windows-msvc.zip
+Get-FileHash .\rust-mirror-gui-0.5.0-x86_64-pc-windows-msvc.zip
 ```
 
 ```sh
@@ -63,7 +104,7 @@ was built by this repository's release workflow from the tagged source. With
 the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify rust-mirror-gui-0.4.3-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
+gh attestation verify rust-mirror-gui-0.5.0-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
 ```
 
 **The binaries are not code-signed**, so your system may warn the first time:
@@ -77,16 +118,16 @@ gh attestation verify rust-mirror-gui-0.4.3-x86_64-unknown-linux-gnu.tar.gz --re
   `xattr -d com.apple.quarantine ./rust-mirror-gui`.
 - **Linux:** no prompt. The binary is built on AlmaLinux 8 (glibc 2.28), and
   each release is launch-tested on AlmaLinux 8 and Ubuntu 20.04. The window
-  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver, xkbcommon and a
-  system font (for symbols such as ✔).
+  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver and xkbcommon. Its
+  fonts are built in, so no system fonts are needed.
   Desktop distributions already have them. On a minimal or GPU-less machine,
   install:
 
   ```sh
   # Debian/Ubuntu
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6
   # RHEL, AlmaLinux, Rocky Linux
-  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig
+  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi
   ```
 
 ### Install with Cargo
@@ -162,7 +203,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.5.0](docs/releases/v0.5.0.md), [0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

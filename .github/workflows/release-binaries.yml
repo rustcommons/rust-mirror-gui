@@ -219,7 +219,9 @@ jobs:
         shell: bash
         run: |
           exe="src/target/${{ matrix.target }}/release/$NAME"; [ -f "$exe.exe" ] && exe="$exe.exe"
-          python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE --name "$NAME" \
+          # releases from 0.5.0 on build in the DejaVu Sans font; ship its license
+          font=src/assets/fonts/LICENSE-DejaVu.txt; [ -f "$font" ] || font=""
+          python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE ${font:+--font-license "$font"} --name "$NAME" \
             --version "${{ needs.prepare.outputs.version }}" --target "${{ matrix.target }}" --out dist \
             --glibc "${{ steps.glibc.outputs.min }}" --glibc-built "${{ steps.glibc.outputs.built }}" \
             --source "${{ needs.prepare.outputs.pr == 'true' && 'pull request (dry run, not a release)' || needs.prepare.outputs.tag }} at commit $(git -C src rev-parse HEAD)"
@@ -250,13 +252,13 @@ jobs:
           sed -n 1,2p /etc/os-release
           if command -v dnf >/dev/null; then
             # runtime: the packages README.txt lists for RHEL-family systems
-            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig \
+            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi \
               xorg-x11-server-Xvfb xorg-x11-utils python3 tar gzip
           else
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             # runtime: the packages README.txt lists for Debian/Ubuntu
-            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig \
+            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 \
               xvfb x11-utils python3
           fi
           ldd --version 2>&1 | sed -n 1p
@@ -273,6 +275,12 @@ jobs:
       - name: Start the worker and the window (Xvfb)
         shell: bash
         run: |
+          # No system fonts at all: the app's fonts are built in (0.5.0 on).
+          # Packages such as Xvfb may pull fonts in; remove them all.
+          if tar -tzf dist/*.tar.gz | grep -q LICENSE-DejaVu.txt; then
+            rm -rf /usr/share/fonts /usr/local/share/fonts /etc/fonts
+            echo "system fonts and fontconfig settings removed"
+          fi
           tar -xzf dist/*.tar.gz
           exe=$(ls -d rust-mirror-gui-*/)rust-mirror-gui
           "$exe" --worker --version < /dev/null | tee worker.txt

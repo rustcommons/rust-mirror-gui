@@ -54,6 +54,14 @@ look slightly different.
 
 ## 1. Install and launch
 
+**Check your platform first.** The window runs on Windows x64, macOS 11 or
+newer, and x86-64 Linux with glibc 2.28 or newer (RHEL-family 8, Ubuntu
+20.04, Debian 10 or newer). On older Linux (CentOS 7, Ubuntu 18.04, SLES 12),
+32-bit systems, ARM Linux or Windows on ARM, use the
+[rust-mirror command line](https://github.com/rustcommons/rust-mirror)
+instead. See [Supported platforms](../README.md#supported-platforms) for
+what is tested and the known limits.
+
 **Easiest:** download the archive for your system from the
 [latest GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases/latest)
 (from 0.4.3 on), unpack it and run `rust-mirror-gui`. The binaries are not
@@ -74,12 +82,10 @@ rust-mirror-gui
 - **Windows (Cargo only):** you also need the Microsoft C++ build tools, as
   for any Rust install.
 - **Linux:** building needs no extra packages. To run, the app needs a graphics
-  driver (Vulkan or OpenGL) and xkbcommon. Desktop Linux already has them. On a
-  minimal or GPU-less Debian/Ubuntu machine, install:
-
-  ```sh
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
-  ```
+  driver (Vulkan or OpenGL) and xkbcommon; its fonts are built in. Desktop
+  Linux already has them. On a minimal or GPU-less machine, install the
+  packages listed in the README's
+  [install section](../README.md#download-a-prebuilt-binary).
 
 - **Settings:** the app remembers form values, never passwords, in
   `%APPDATA%\rust-mirror-gui\settings.json` on Windows or
@@ -87,7 +93,7 @@ rust-mirror-gui
 
 When the app starts, the top bar should say
 **"✔ rust-mirror 0.5.1 built in · event protocol 1"** (the version of the
-built-in engine; 0.4.3 has 0.5.1). If it shows a red message,
+built-in engine; 0.5.0 has 0.5.1). If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes

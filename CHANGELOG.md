@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-15
+
+Built-in fonts, and documented supported platforms. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.5.0.md).
+
+- **Supported platforms are documented:** what is tested, what is expected
+  to work, and what isn't supported (with the rust-mirror command line as
+  the alternative). They are in the README, the tutorial, the archives'
+  `README.txt` and the About page.
+- **Measured: how old a Linux the GUI runs on** (CI only, nothing
+  published). Below glibc 2.28, old X and graphics libraries stop the
+  window even when a glibc 2.17 build loads. See the
+  [record](docs/evals/2026-11-15-glibc-experiments.md). The Linux download
+  stays the glibc 2.28 build.
+- **Fonts are built in.** The app bundles DejaVu Sans 2.37 (free license, see
+  `NOTICE`) after egui's own fonts and no longer looks up system fonts. On
+  minimal Linux systems without fontconfig or fonts, symbols such as ✔, ✖
+  and ⚠ showed as empty boxes; they now always draw. fontconfig and DejaVu
+  are no longer in the documented Linux runtime packages. Prebuilt archives
+  include `LICENSE-DejaVu.txt`. The executable is about 0.8 MB larger.
 - Documentation: add the 0.4.3 [publication record](docs/evals/2026-11-15-v0.4.3-publication.md).
 - Testing: `verify-release-download.yml` checks a published release's
   downloads as a user gets them (checksums, attestations, and running the
