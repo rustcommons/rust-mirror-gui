@@ -131,12 +131,12 @@ jobs:
       - name: Build tools (Linux container)
         if: runner.os == 'Linux'
         run: |
-          cat /etc/os-release | head -2
+          sed -n 1,2p /etc/os-release
           dnf install -y git gcc binutils python39 tar gzip findutils which
           alternatives --set python3 /usr/bin/python3.9
           # the workspace belongs to the runner user, not the container's root
           git config --global --add safe.directory '*'
-          ldd --version | head -1
+          ldd --version 2>&1 | sed -n 1p
       - name: Release source (the tagged commit)
         uses: actions/checkout@v4
         with:
@@ -198,12 +198,12 @@ jobs:
           min=$(objdump -T "$exe" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -uV | tail -1)
           echo "highest GLIBC_ symbol version (minimum glibc): $min"; echo "linked libraries:"; objdump -p "$exe" | awk '/NEEDED/ {print "  " $2}'
           echo "min=$min" >> "$GITHUB_OUTPUT"
-          built=$(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$')
+          built=$(ldd --version 2>&1 | sed -n 1p | grep -oE '[0-9]+\.[0-9]+$')
           echo "build runner glibc: $built"; echo "built=$built" >> "$GITHUB_OUTPUT"
       - name: Architecture (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        run: file "src/target/${{ matrix.target }}/release/$NAME"; otool -l "src/target/${{ matrix.target }}/release/$NAME" | grep -A3 LC_BUILD_VERSION | head -4
+        run: file "src/target/${{ matrix.target }}/release/$NAME"; otool -l "src/target/${{ matrix.target }}/release/$NAME" | grep -m1 -A3 LC_BUILD_VERSION
       - name: Package
         shell: bash
         run: |
@@ -235,7 +235,7 @@ jobs:
     steps:
       - name: Runtime and test packages
         run: |
-          cat /etc/os-release | head -2
+          sed -n 1,2p /etc/os-release
           if command -v dnf >/dev/null; then
             # runtime: the packages README.txt lists for RHEL-family systems
             dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi \
@@ -247,7 +247,7 @@ jobs:
             apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 \
               xvfb x11-utils x11-apps python3
           fi
-          ldd --version | head -1
+          ldd --version 2>&1 | sed -n 1p
       - name: Test scripts (this workflow's commit)
         uses: actions/checkout@v4
         with:
