@@ -178,11 +178,13 @@ jobs:
             gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" > /dev/null
             echo "provenance verified: $(basename "$f")"
           done
-          # the SBOM attestation for every archive
+          # the SBOM attestation for every archive, and it is exactly the SBOM
+          # being published
           for f in dist/*.zip dist/*.tar.gz; do
             gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" \
-              --predicate-type https://cyclonedx.org/bom > /dev/null
-            echo "SBOM attestation verified: $(basename "$f")"
+              --predicate-type https://cyclonedx.org/bom --format json > att.json
+            python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dist/*.cdx.json
+            echo "SBOM attestation verified, same SBOM: $(basename "$f")"
           done
       - name: Upload to the release (never replaces)
         run: gh release upload "$TAG" dist/* --repo "$REPO"

@@ -54,8 +54,9 @@ jobs:
           if [ $files -eq 5 ]; then
             for f in *.zip *.tar.gz; do
               gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" \
-                --predicate-type https://cyclonedx.org/bom >/dev/null
-              echo "SBOM attestation verified: $f"
+                --predicate-type https://cyclonedx.org/bom --format json > ../att.json
+              (cd .. && python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dl/*.cdx.json)
+              echo "SBOM attestation verified, same SBOM as the release's: $f"
             done
             python3 -c "import json,glob; d=json.load(open(glob.glob('*.cdx.json')[0])); print('SBOM:', d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')"
           fi
