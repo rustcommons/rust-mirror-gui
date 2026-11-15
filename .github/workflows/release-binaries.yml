@@ -239,13 +239,13 @@ jobs:
           if command -v dnf >/dev/null; then
             # runtime: the packages README.txt lists for RHEL-family systems
             dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi \
-              xorg-x11-server-Xvfb xorg-x11-utils xorg-x11-apps python3 tar gzip
+              xorg-x11-server-Xvfb xorg-x11-utils python3 tar gzip
           else
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             # runtime: the packages README.txt lists for Debian/Ubuntu
             apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 \
-              xvfb x11-utils x11-apps python3
+              xvfb x11-utils python3
           fi
           ldd --version 2>&1 | sed -n 1p
       - name: Test scripts (this workflow's commit)
@@ -265,7 +265,10 @@ jobs:
           exe=$(ls -d rust-mirror-gui-*/)rust-mirror-gui
           "$exe" --worker --version < /dev/null | tee worker.txt
           grep -q '"protocol":1' worker.txt
-          sh tools/qualification/linux-launch.sh "$exe" shots
+          ok=0; sh tools/qualification/linux-launch.sh "$exe" shots/default || ok=1
+          echo "--- with WGPU_BACKEND=gl (OpenGL), for comparison"
+          WGPU_BACKEND=gl sh tools/qualification/linux-launch.sh "$exe" shots/gl || echo "OpenGL launch failed too"
+          [ $ok -eq 0 ] || { echo "::error::the default launch failed on ${{ matrix.container }}"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
