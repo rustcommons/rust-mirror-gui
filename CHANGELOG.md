@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Documentation: add the 0.4.3 [publication record](docs/evals/2026-11-15-v0.4.3-publication.md).
+- Testing: `verify-release-download.yml` checks a published release's
+  downloads as a user gets them (checksums, attestations, and running the
+  Windows and Linux archives); read-only.
+
 ## [0.4.3] - 2026-11-15
 
 The window opens on Linux machines without a GPU that have an older Mesa,
