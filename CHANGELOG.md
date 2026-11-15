@@ -21,15 +21,17 @@ built-in engine is rust-mirror 0.5.1. See the
 [versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.2.md).
 
 - **Fixed: high CPU use while an operation runs.** The window redrew for every
-  line of worker output, and an egui grid that changed size on every redraw
-  asked for yet another redraw, so the window redrew continuously during a
-  download. With software rendering (Remote Desktop, machines without a
+  line of worker output, and a details table that changed size on every
+  redraw asked for another redraw, so the window redrew continuously during
+  a download. With software rendering (Remote Desktop, machines without a
   GPU) that used several cores and slowed the download itself. The window
-  now redraws twice a second while an operation runs, and the crate preview
-  table and the activity log lay out only their visible rows. On Linux
-  under xrdp, the window's CPU during a crate download fell from 317% to
-  about 27% of one core, and the download finished faster (26 s instead of
-  46 s).
+  now redraws once a second while an operation runs, and at once for input,
+  the end of an operation, errors, retry waits and the stalled warning. The
+  crate preview table and the activity log lay out only the rows in view.
+  Window CPU during a crate download inside Remote Desktop, % of one core:
+  Linux with xrdp 317% → 14.4%; Windows Server 2025 165.5% → 6.2%; Windows
+  Server 2022 326.9% → 86.2% (its software renderer stays slow; a known
+  limit).
 - **Fixed: large crate previews failed in the window.** The worker's result
   for a preview of about 300 crate versions is over 1 MiB, which the window
   refused ("event line exceeds 1 MiB"). The limit is now 64 MiB.
@@ -44,10 +46,11 @@ built-in engine is rust-mirror 0.5.1. See the
   "…" with the full text on hover. It lists up to 10,000 rows (was 400).
   Long lines in the activity log scroll sideways instead of wrapping.
 - Diagnostics: `RUST_MIRROR_GUI_FRAME_LOG=<file>` writes, once a second, how
-  often the window redrew and why.
+  often the window redrew and why; `RUST_MIRROR_GUI_PRESENT_MODE` picks the
+  swap-chain present mode.
 - Testing: a Remote Desktop qualification workflow runs the app inside a real
-  RDP session on Windows Server 2022 and 2025, and xrdp on Linux was tested
-  by hand. See the [record](docs/evals/2026-11-15-remote-desktop.md).
+  RDP session on Windows Server 2022 and 2025; xrdp on Linux was tested by
+  hand. See the [record](docs/evals/2026-11-15-remote-desktop.md).
 
 ## [0.4.1] - 2026-11-14
 
