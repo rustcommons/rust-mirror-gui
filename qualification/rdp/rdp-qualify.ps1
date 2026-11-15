@@ -173,6 +173,36 @@ function Files-Done {
     }
     -1
 }
+# CPU and memory of the app, measured from this (administrator) session so
+# nothing starts inside the test session: a process starting there takes
+# focus for a moment, and the window redraws on focus changes.
+function Measure-Cpu([int]$seconds) {
+    $procs = @(Get-CimInstance Win32_Process -Filter "Name = 'rust-mirror-gui.exe'" | Where-Object { $_.SessionId -eq (Session-Id) })
+    $gui = $procs | Where-Object { $_.CommandLine -notmatch '--worker' } | Select-Object -First 1
+    if (-not $gui) { return @{ ok = $false; error = 'the app is not running' } }
+    $g = Get-Process -Id $gui.ProcessId
+    $before = @{}
+    foreach ($q in Get-Process rust-mirror-gui -ErrorAction SilentlyContinue) { $before[$q.Id] = $q.TotalProcessorTime.TotalSeconds }
+    $g0 = $g.TotalProcessorTime.TotalSeconds
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    Start-Sleep -Seconds $seconds
+    $el = $sw.Elapsed.TotalSeconds
+    $g.Refresh()
+    $total = 0.0
+    foreach ($q in Get-Process rust-mirror-gui -ErrorAction SilentlyContinue) {
+        $start = if ($before.ContainsKey($q.Id)) { $before[$q.Id] } else { 0 }
+        $total += $q.TotalProcessorTime.TotalSeconds - $start
+    }
+    [ordered]@{
+        ok = $true
+        gui_cpu_pct = [math]::Round(100 * ($g.TotalProcessorTime.TotalSeconds - $g0) / $el, 1)
+        gui_plus_workers_cpu_pct = [math]::Round(100 * $total / $el, 1)
+        gui_working_set_mib = [math]::Round($g.WorkingSet64 / 1MB)
+        gui_private_mib = [math]::Round($g.PrivateMemorySize64 / 1MB)
+        interval_s = [math]::Round($el, 1)
+        cores = [Environment]::ProcessorCount
+    }
+}
 function Settings([string]$run, [string]$catalog = 'crates.toml') {
     @{ crate_catalog_path = "$Share\data\$catalog"; crate_output = "$Share\data\$run"; crate_previous = '' }
 }
@@ -207,7 +237,7 @@ Record 'renderer-is-direct3d12-warp' ($l.modules -contains 'd3d10warp.dll' -and 
 [void](In 'invoke' @{ name = 'Preview' })
 $p = Wait-Text '^Preview: \d+ crates' 600
 [void](In 'capture' @{ name = '02-preview' })
-$idle = In 'cpu' @{ seconds = 30 }
+$idle = Measure-Cpu 30
 Record 'idle-cpu-and-memory' ($idle.gui_cpu_pct -lt 3 -and $idle.gui_working_set_mib -lt 300) $idle
 [void](In 'invoke' @{ name = 'Approve this preview and download' })
 # The sync first resolves again (10-20 s), then downloads.
@@ -263,7 +293,7 @@ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class Show { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); }
 "@
-$active = In 'cpu' @{ seconds = 8 }
+$active = Measure-Cpu 8
 # Plan threshold: under 25% of one core. Windows Server 2022's software
 # renderer costs about 0.9 s of CPU per frame even at 1 redraw a second, so a
 # miss there is recorded as a limit; over 150% means the continuous redraw of
@@ -274,7 +304,7 @@ else { Record 'cpu-during-sync' $false $active }
 $h = (Get-Process wfreerdp | Select-Object -First 1).MainWindowHandle
 [void][Show]::ShowWindow($h, 6)   # SW_MINIMIZE
 Log "RDP client minimized"
-$minCpu = In 'cpu' @{ seconds = 8 }
+$minCpu = Measure-Cpu 8
 Start-Sleep -Seconds 5
 [void][Show]::ShowWindow($h, 9)   # SW_RESTORE
 Start-Sleep -Seconds 3
@@ -287,19 +317,19 @@ if ($OldExe) {
     [void](In 'stop')
     [void](Start-Sync "$Share\old\rust-mirror-gui.exe" 'run-old' 'crates-small.toml')
     Start-Sleep -Seconds 2
-    $old = In 'cpu' @{ seconds = 8 }
+    $old = Measure-Cpu 8
     [void](Wait-Text '^Verified crate mirror' 180)
     [void](In 'stop')
     [void](Start-Sync "$Share\app\rust-mirror-gui.exe" 'run-new' 'crates-small.toml')
     Start-Sleep -Seconds 2
-    $new = In 'cpu' @{ seconds = 8 }
+    $new = Measure-Cpu 8
     [void](Wait-Text '^Verified crate mirror' 180)
     Record 'cpu-during-sync-vs-0.4.1' ($new.gui_cpu_pct -lt $old.gui_cpu_pct) @{ v0_4_1 = $old; this_build = $new }
     # The same, with the swap chain presenting without vsync (diagnostic).
     [void](In 'stop')
     [void](Start-Sync "$Share\app\rust-mirror-gui.exe" 'run-novsync' 'crates-small.toml' @{ RUST_MIRROR_GUI_PRESENT_MODE = 'auto_no_vsync' })
     Start-Sleep -Seconds 2
-    $nv = In 'cpu' @{ seconds = 8 }
+    $nv = Measure-Cpu 8
     [void](Wait-Text '^Verified crate mirror' 180)
     Record 'cpu-during-sync-present-without-vsync (measurement)' $true @{ default_present_mode = $new; auto_no_vsync = $nv }
 }

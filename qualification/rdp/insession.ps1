@@ -8,8 +8,6 @@
 #   invoke   {name}           press a button or sidebar entry by its accessible
 #                              name (UI Automation; egui exposes AccessKit)
 #   texts    {}               all accessible names (labels, status, progress)
-#   cpu      {seconds}        CPU% (of one core) and memory of the app and its
-#                              worker processes over an interval
 #   stop     {}               end the app
 $ErrorActionPreference = 'Stop'
 $cmd = Get-Content C:\rdpqual\cmd.json -Raw | ConvertFrom-Json
@@ -139,30 +137,6 @@ try {
         }
         'texts' {
             $result.names = All-Names
-            $result.ok = $true
-        }
-        'cpu' {
-            # GUI alone, and GUI plus worker processes (same executable).
-            $gui = App-Process
-            if (-not $gui) { throw "the app is not running" }
-            $before = @{}
-            foreach ($q in Get-Process rust-mirror-gui -ErrorAction SilentlyContinue) { $before[$q.Id] = $q.TotalProcessorTime.TotalSeconds }
-            $g0 = $gui.TotalProcessorTime.TotalSeconds
-            $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            Start-Sleep -Seconds $cmd.seconds
-            $el = $sw.Elapsed.TotalSeconds
-            $gui.Refresh()
-            $total = 0.0
-            foreach ($q in Get-Process rust-mirror-gui -ErrorAction SilentlyContinue) {
-                $start = if ($before.ContainsKey($q.Id)) { $before[$q.Id] } else { 0 }
-                $total += $q.TotalProcessorTime.TotalSeconds - $start
-            }
-            $result.gui_cpu_pct = [math]::Round(100 * ($gui.TotalProcessorTime.TotalSeconds - $g0) / $el, 1)
-            $result.gui_plus_workers_cpu_pct = [math]::Round(100 * $total / $el, 1)
-            $result.gui_working_set_mib = [math]::Round($gui.WorkingSet64 / 1MB)
-            $result.gui_private_mib = [math]::Round($gui.PrivateMemorySize64 / 1MB)
-            $result.interval_s = [math]::Round($el, 1)
-            $result.cores = [Environment]::ProcessorCount
             $result.ok = $true
         }
         'stop' {
