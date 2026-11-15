@@ -17,24 +17,34 @@ RDP? Is its CPU use reasonable?
 - large crate previews failed in the window.
 
 **CPU, before and after** (GUI process only, % of one core, 4-core
-machines, crate download with the preview on screen):
+machines, crate download with the preview on screen, same catalog and session
+for both builds):
 
 | Platform | 0.4.1 | 0.4.2 | Plan threshold (25%) |
 | --- | --- | --- | --- |
 | Linux, xrdp, Mesa llvmpipe/lavapipe | 317% | **14.4%** | pass |
-| Windows Server 2025, RDP, WARP | 165.5% | **6.2%** (4.5% on the larger catalog) | pass |
-| Windows Server 2022, RDP, WARP | 326.9% | **86.2%** (88.6% on the larger catalog) | **limit** (see below) |
+| Windows, RDP, Direct3D 12 on WARP, Intel Xeon Platinum 8370C | 190.3% | **8.6%** | pass |
+| Windows, RDP, Direct3D 12 on WARP, AMD EPYC 7763 | 311.4% | **66.2%** | **limit** (see below) |
 
-Windows numbers are from the same run, same session and same 181-version
-catalog for both builds (run 43676198817). The Linux numbers are from the
-same session and catalog. Idle (no operation running) is 0–2.5% everywhere.
+The Windows rows are from run
+[43681749406](https://github.com/rustcommons/rust-mirror-gui/actions/runs/43681749406),
+which recorded the processor. The cost depends on the machine GitHub
+assigns, not on the Windows version: in that run the AMD machine was the
+Server 2022 runner, and in run 43679961862 the slow one was the Server 2025
+runner. Idle (no operation running) is 0% everywhere.
 
 ## Windows (step 1)
 
-**Evidence run:**
-[43676198817](https://github.com/rustcommons/rust-mirror-gui/actions/runs/43676198817)
-(commit `2cd22ce`, the final app code; the harness was later changed only to
-record the CPU limit below). Workflow:
+**Evidence runs:**
+- the scenario table below is from
+  [43676198817](https://github.com/rustcommons/rust-mirror-gui/actions/runs/43676198817)
+  (commit `2cd22ce`, the final app code);
+- CPU is from
+  [43681749406](https://github.com/rustcommons/rust-mirror-gui/actions/runs/43681749406),
+  where it is measured from the administrator session (see the harness
+  notes) and the processor is recorded.
+
+All scenarios passed on both images in 43679961862 and 43681749406 too. Workflow:
 [`remote-desktop.yml`](../../.github/workflows/remote-desktop.yml).
 
 The scripts are in [`qualification/rdp/`](../../qualification/rdp). On a
@@ -67,37 +77,46 @@ regex, serde, anyhow, aws-sdk-s3, aws-config), downloaded one at a time.
 | Reconnect at 1600×900 | **Pass:** drew on the 1600×900 screen | **Pass** |
 | Reconnect at 150% | **Pass:** DPI 144, drew | **Pass:** DPI 144, drew ([screenshot](../screenshots/rdp-windows-2025-150pct.png)) |
 | Minimize the RDP client mid-sync | **Pass:** sync finished, drew after restore (GUI 89.6% while minimized) | **Pass:** GUI 4.3% while minimized |
-| CPU during a download | **Limit:** 88.6% (0.4.1: 326.9%) | **Pass:** 4.5% (0.4.1: 165.5%) |
+| CPU during a download | Run 43676198817: 88.6% (0.4.1: 326.9%); run 43681749406, AMD EPYC: **limit**, 62.7% | Run 43676198817: 4.5% (0.4.1: 165.5%); run 43681749406, Intel Xeon: **pass**, 7.2% |
 | Start on the console, take over through RDP | **Pass:** on the console (Hyper-V Video, 1024×768) it drew; after RDP takeover it drew | **Pass** ([on the console](../screenshots/rdp-windows-2025-on-console.png)) |
 
 Screenshots: [downloading, Server 2025](../screenshots/rdp-windows-2025-downloading.png),
 [after reconnecting, Server 2022](../screenshots/rdp-windows-2022-after-reconnect.png).
 All captures are in the run's artifacts.
 
-### The Server 2022 CPU limit
+### The CPU limit on some machines
 
-The frame log shows exactly 1 redraw a second during the 8-second sample.
-Building each frame takes about 10 ms, yet the window uses 88% of a core.
-So each frame costs about 0.9 s of CPU in Server 2022's software renderer
-(WARP), against about 45 ms on Server 2025.
+On an AMD EPYC 7763 runner, the frame log shows exactly 1 redraw a second
+during the 8-second sample. Building each frame takes about 10 ms, yet the
+window uses 63–89% of a core. So each frame costs about 0.6–0.9 s of CPU in
+Windows' software renderer (WARP). On the Intel Xeon Platinum 8370C runners
+it is about 45–80 ms.
 
 Presenting without vsync (`RUST_MIRROR_GUI_PRESENT_MODE=auto_no_vsync`)
-made no difference: 92.3%, against 86.2% with the default.
+made no difference: 68.5% against 62.7% on AMD, and 6.4% against 7.2% on
+Intel.
 
-The app cannot make that renderer faster. 0.4.2 cuts its use from 327% to
-86–89%, which is about 22% of the 4-core machine. The remaining options, for
-the owner to decide:
-- redraw less often on very slow renderers (adaptive);
-- accept it as a known limit of Server 2022 without a GPU.
+The app cannot make that renderer faster. 0.4.2 cuts its use from about
+310% to about 65% on those machines, which is under a quarter of a 4-core
+machine. The remaining options, for the owner to decide:
+- redraw less often when frames are this slow (adaptive);
+- accept it as a known limit of software rendering on those processors.
 
-The workflow records it as a limit and fails if CPU goes over 150%, which
+The workflow records it as a limit, and fails if CPU goes over 150%, which
 would mean the 0.4.1 behaviour is back.
+
+**Correction:** earlier drafts of this record called this a Windows Server
+2022 limit. Recording the processor showed it follows the runner machine.
 
 ### Harness problems found on the way (not app bugs)
 
 - The first CPU fix was measured only on Linux. On Windows it was invisible
   until the frame log showed a resizing egui grid requesting extra redraws.
 - Large previews failed in the window: a real app bug, fixed (64 MiB).
+- CPU was first sampled by a process started inside the test session. Its
+  start took focus for a moment, and the window redrew, which made idle
+  readings of up to 4% on slow machines. CPU is now measured from the
+  administrator session.
 - The harness was adjusted along the way:
   - it waits for the download stage before sampling, because the sync first
     resolves again for 10–20 s;
@@ -106,7 +125,7 @@ would mean the 0.4.1 behaviour is back.
   - it runs the 0.4.1 comparison on a catalog that 0.4.1 can preview.
 
 Earlier runs: 43653491629, 43655102977, 43667562821, 43670573136,
-43673582573.
+43673582573, 43677825730, 43679961862.
 
 ## Linux with xrdp (step 2)
 

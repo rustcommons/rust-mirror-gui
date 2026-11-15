@@ -10,7 +10,7 @@ promised for a specific release. Shipped behavior is described in the
   2026-11-12; Remote Desktop steps 1 and 2 done on 2026-11-15, see the
   [Remote Desktop record](evals/2026-11-15-remote-desktop.md): Windows
   Server 2022 and 2025 over loopback RDP and Linux with xrdp pass, with
-  CPU use on Server 2022 as an open limit). Check that the app opens, draws correctly, stays responsive and
+  CPU use on some machines as an open limit). Check that the app opens, draws correctly, stays responsive and
   completes a sync on machines without a GPU, especially Windows Server over
   Remote Desktop. Includes a clear failure message where nothing can draw and
   tested workarounds. Waiting on a test environment decision.

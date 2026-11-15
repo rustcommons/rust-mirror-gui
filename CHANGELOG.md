@@ -29,9 +29,9 @@ built-in engine is rust-mirror 0.5.1. See the
   the end of an operation, errors, retry waits and the stalled warning. The
   crate preview table and the activity log lay out only the rows in view.
   Window CPU during a crate download inside Remote Desktop, % of one core:
-  Linux with xrdp 317% → 14.4%; Windows Server 2025 165.5% → 6.2%; Windows
-  Server 2022 326.9% → 86.2% (its software renderer stays slow; a known
-  limit).
+  Linux with xrdp 317% → 14.4%; Windows on Intel Xeon 190% → 8.6%; Windows
+  on AMD EPYC 326% → 66%, where Windows' software renderer is about ten times
+  slower per frame (a known limit).
 - **Fixed: large crate previews failed in the window.** The worker's result
   for a preview of about 300 crate versions is over 1 MiB, which the window
   refused ("event line exceeds 1 MiB"). The limit is now 64 MiB.

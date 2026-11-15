@@ -297,10 +297,10 @@ using System; using System.Runtime.InteropServices;
 public static class Show { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd); }
 "@
 $active = Measure-Cpu 8
-# Plan threshold: under 25% of one core. Windows Server 2022's software
-# renderer costs about 0.9 s of CPU per frame even at 1 redraw a second, so a
-# miss there is recorded as a limit; over 150% means the continuous redraw of
-# 0.4.1 is back, which fails.
+# Plan threshold: under 25% of one core. On some runner machines (AMD EPYC
+# 7763) Windows' software renderer costs about 0.6-0.9 s of CPU per frame
+# even at 1 redraw a second, so a miss is recorded as a limit; over 150%
+# means the continuous redraw of 0.4.1 is back, which fails.
 if ($active.gui_cpu_pct -lt 25) { Record 'cpu-during-sync' $true $active }
 elseif ($active.gui_cpu_pct -le 150) { Record 'cpu-during-sync' $false $active -Limit }
 else { Record 'cpu-during-sync' $false $active }

@@ -4,8 +4,9 @@ Status: **steps 1 and 2 done** (2026-11-15) for W1 with real RDP (Windows
 Server 2022 and 2025, loopback RDP with FreeRDP) and L3 (Linux with xrdp);
 see the [Remote Desktop record](../evals/2026-11-15-remote-desktop.md). Both
 work, including disconnect and reconnect, other resolutions, 150% and console
-takeover. Open: Server 2022's software renderer keeps the window at about
-86–89% of one core while an operation runs (plan threshold 25%). Not started:
+takeover. Open: on some machines (seen on AMD EPYC 7763 runners) Windows'
+software renderer keeps the window at about 60–90% of one core while an
+operation runs (plan threshold 25%); on Intel Xeon runners it is 4–9%. Not started:
 W2/W3 with a remote client, L1/L2/L4, M1, and screen readers. See the
 [roadmap](../ROADMAP.md).
 

@@ -317,9 +317,9 @@ Things to know:
   With no Vulkan or OpenGL driver at all, the window can't be created.
 - Windows over **Remote Desktop** works: tested inside real RDP sessions on
   Windows Server 2022 and 2025, including disconnect and reconnect, other
-  resolutions and 150% ([record](evals/2026-11-15-remote-desktop.md)). On
-  Server 2022 without a GPU, the window uses most of one processor core
-  while an operation runs. Native Windows 11 launches have been checked. On Windows Server 2025 **without a GPU**, 0.4.0
+  resolutions and 150% ([record](evals/2026-11-15-remote-desktop.md)).
+  Without a GPU, Windows draws in software; on some processors that costs
+  most of one processor core while an operation runs. Native Windows 11 launches have been checked. On Windows Server 2025 **without a GPU**, 0.4.0
   opens and draws its first screen with Direct3D 12 on WARP, Windows' software
   renderer ([Windows qualification](evals/2026-11-14-windows-qualification.md));
   using it there, and Remote Desktop, are still untested. See the
