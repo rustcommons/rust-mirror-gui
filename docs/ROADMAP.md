@@ -43,6 +43,14 @@ promised for a specific release. Shipped behavior is described in the
 
   Most of this belongs in rust-mirror's network layer, with the GUI exposing
   the choice. Not designed or approved yet.
+- **Slower redraws when frames are slow** (small follow-up, decided by the
+  owner on 2026-11-15; not yet scheduled). Without a GPU, Windows draws in
+  software, and on some processors one frame costs 0.6–0.9 s of CPU (seen on
+  AMD EPYC 7763 runners), so even at one redraw a second the window uses
+  60–90% of a core while an operation runs. The app would time its frames
+  and redraw less often while a job runs when frames are that slow, while
+  input still redraws at once. 0.4.2 ships this as a documented limit; see
+  the [Remote Desktop record](evals/2026-11-15-remote-desktop.md).
 - Team feedback from the 0.1.0 demo (to be collected).
 
 ## Possible future additions

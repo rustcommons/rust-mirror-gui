@@ -7,6 +7,8 @@
   Windows renderer finding in the [0.4.0 validation record](docs/evals/2026-11-13-v0.4.0-validation.md),
   and a tutorial troubleshooting entry for a blank window on Windows.
 - Documentation: add the 0.4.1 [publication record](docs/evals/2026-11-14-v0.4.1-publication.md).
+- Documentation: add the 0.4.2 [publication record](docs/evals/2026-11-15-v0.4.2-publication.md),
+  and a roadmap item for slower redraws when frames are slow.
 - Testing: a repeatable Windows qualification workflow runs the crate
   workflow end to end through the app's worker (paste, Cargo.lock import,
   preview, approval, hard kill and resume, retention preview, Client setup,
