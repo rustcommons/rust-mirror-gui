@@ -35,7 +35,7 @@ from 0.4.2 on has ready-to-run archives:
 | System | File |
 | --- | --- |
 | Windows x86-64 | `rust-mirror-gui-<version>-x86_64-pc-windows-msvc.zip` |
-| Linux x86-64 (glibc 2.35 or newer) | `rust-mirror-gui-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux x86-64 (glibc 2.28 or newer: RHEL/AlmaLinux/Rocky 8, Ubuntu 20.04, Debian 10, SLES 15 SP4 or newer) | `rust-mirror-gui-<version>-x86_64-unknown-linux-gnu.tar.gz` |
 | macOS Apple silicon | `rust-mirror-gui-<version>-aarch64-apple-darwin.tar.gz` |
 | macOS Intel | `rust-mirror-gui-<version>-x86_64-apple-darwin.tar.gz` |
 
@@ -73,12 +73,17 @@ gh attestation verify rust-mirror-gui-0.4.2-x86_64-unknown-linux-gnu.tar.gz --re
   developer cannot be verified". After checking the SHA-256, right-click the
   program in Finder and choose **Open**, or run once in Terminal:
   `xattr -d com.apple.quarantine ./rust-mirror-gui`.
-- **Linux:** no prompt. The window needs a Vulkan or OpenGL driver and
-  xkbcommon. Desktop distributions already have them. On a minimal or
-  GPU-less Debian/Ubuntu machine, install:
+- **Linux:** no prompt. The binary is built on AlmaLinux 8 (glibc 2.28), and
+  each release is launch-tested on AlmaLinux 8 and Ubuntu 20.04. The window
+  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver and xkbcommon.
+  Desktop distributions already have them. On a minimal or GPU-less machine,
+  install:
 
   ```sh
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
+  # Debian/Ubuntu
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6
+  # RHEL, AlmaLinux, Rocky Linux
+  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi
   ```
 
 ### Install with Cargo

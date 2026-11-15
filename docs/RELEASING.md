@@ -37,7 +37,7 @@ asset names and archive layout are shared with rust-mirror.
 | Asset | Built on |
 | --- | --- |
 | `rust-mirror-gui-X.Y.Z-x86_64-pc-windows-msvc.zip` | `windows-2022` |
-| `rust-mirror-gui-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` | `ubuntu-22.04`, the oldest available runner, for the widest glibc support; the run log records the minimum glibc |
+| `rust-mirror-gui-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` | an `almalinux:8` container (glibc 2.28) on `ubuntu-22.04`; the run log records the highest `GLIBC_` symbol version. Not musl: the window loads X11, Wayland and GL libraries at run time |
 | `rust-mirror-gui-X.Y.Z-aarch64-apple-darwin.tar.gz` | `macos-15` (macOS 11 or newer) |
 | `rust-mirror-gui-X.Y.Z-x86_64-apple-darwin.tar.gz` | `macos-15-intel` (macOS 11 or newer) |
 | `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name |
@@ -60,7 +60,12 @@ asset names and archive layout are shared with rust-mirror.
   - `rust-mirror-gui --worker --version` must report protocol 1 and its
     rust-mirror version;
   - on Windows, the window is also launched and captured with PrintWindow,
-    and must not be blank.
+    and must not be blank;
+  - on Linux, the packaged archive is unpacked in `almalinux:8` and
+    `ubuntu:20.04` containers that have only the runtime packages README.txt
+    lists. It must start its worker, map the "rust-mirror GUI" window on
+    Xvfb and draw it (`qualification/linux-launch.sh`). Publishing waits
+    for this job.
 - **Attestations:** every archive and `SHA256SUMS` get a GitHub artifact
   attestation (Sigstore build provenance), using
   `actions/attest-build-provenance` v4.2.2 pinned by commit. They are
