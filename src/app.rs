@@ -277,6 +277,16 @@ struct FrameLog {
 
 impl FrameLog {
     fn new(path: std::ffi::OsString) -> Self {
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut f| {
+                std::io::Write::write_all(
+                    &mut f,
+                    format!("started rust-mirror-gui {}\n", env!("CARGO_PKG_VERSION")).as_bytes(),
+                )
+            });
         Self {
             path,
             second: 0,

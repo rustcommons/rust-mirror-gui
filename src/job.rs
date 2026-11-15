@@ -578,7 +578,10 @@ fn spawn_stdout_reader(
             {
                 Ok(0) => break None,
                 Ok(_) if line.len() > protocol::MAX_LINE => {
-                    break Some("event line exceeds 1 MiB; stopped reading events".to_string())
+                    break Some(format!(
+                        "event line exceeds {} MiB; stopped reading events",
+                        protocol::MAX_LINE / (1024 * 1024)
+                    ))
                 }
                 Ok(_) => {
                     let text = String::from_utf8_lossy(&line);
