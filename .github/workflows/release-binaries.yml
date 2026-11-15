@@ -156,6 +156,17 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force shots | Out-Null
           ./tools/qualification/capture-window.ps1 -Exe "src\target\${{ matrix.target }}\release\$env:NAME.exe" -Out shots\window.png
+      - name: DLL imports (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Record what the executable needs from the system. A standard MSVC
+          # build imports VCRUNTIME140.dll (Microsoft Visual C++ Redistributable).
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $deps = & $dumpbin.FullName /nologo /dependents "src\target\${{ matrix.target }}\release\$env:NAME.exe" | Where-Object { $_ -match '^\s+\S+\.dll$' } | ForEach-Object { $_.Trim() }
+          Write-Output "imports: $($deps -join ', ')"
+          if (-not ($deps -contains 'VCRUNTIME140.dll')) { Write-Output "note: VCRUNTIME140.dll is not imported; the README's redistributable note may be unnecessary" }
       - id: glibc
         name: Minimum glibc (Linux)
         if: runner.os == 'Linux'

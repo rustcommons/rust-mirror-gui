@@ -40,7 +40,10 @@ from 0.4.2 on has ready-to-run archives:
 | macOS Intel | `rust-mirror-gui-<version>-x86_64-apple-darwin.tar.gz` |
 
 Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
-the folder. No separate rust-mirror installation is needed.
+the folder. No separate rust-mirror installation is needed. On Windows, if a
+message says `VCRUNTIME140.dll` is missing, install Microsoft's
+[Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist)
+(v14, x64). Most machines already have it.
 
 **Check the download** against `SHA256SUMS` on the same release page:
 

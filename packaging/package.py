@@ -51,7 +51,10 @@ License: Apache-2.0 (see LICENSE).
 
 RUN = {
     "windows": """Unzip the folder anywhere and double-click rust-mirror-gui.exe.
-Windows 10 or 11, or Windows Server 2022 or newer; no installation needed.""",
+Windows 10 or 11, or Windows Server 2022 or newer; nothing else to install,
+except: if Windows says VCRUNTIME140.dll is missing, install Microsoft's
+"Visual C++ Redistributable" (v14, x64) from
+https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist""",
     "linux": """Extract the folder and run ./rust-mirror-gui from it.
 Built and tested on Ubuntu 22.04 (glibc {glibc_built}); the highest glibc
 symbol it uses is GLIBC_{glibc}, so glibc {glibc_built} or newer is supported.
