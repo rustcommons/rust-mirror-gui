@@ -82,9 +82,9 @@ gh attestation verify rust-mirror-gui-0.4.2-x86_64-unknown-linux-gnu.tar.gz --re
 
   ```sh
   # Debian/Ubuntu
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig
   # RHEL, AlmaLinux, Rocky Linux
-  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts
+  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig
   ```
 
 ### Install with Cargo

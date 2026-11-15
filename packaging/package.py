@@ -61,8 +61,8 @@ on AlmaLinux 8 and Ubuntu 20.04.
 The window needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver,
 xkbcommon and a system font for symbols such as the check mark. Desktop distributions already have them. On a minimal or
 GPU-less machine, install:
-  Debian/Ubuntu:  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core
-  RHEL family:    sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts""",
+  Debian/Ubuntu:  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig
+  RHEL family:    sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig""",
     "macos": """Extract the folder and run ./rust-mirror-gui from Terminal.
 macOS 11 or newer ({arch}).""",
 }
