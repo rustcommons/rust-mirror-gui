@@ -21,6 +21,9 @@
 - **Trusted Publishing:** `trusted-publishing.yml` is ready for crates.io
   Trusted Publishing; the current publishing process is unchanged until
   the owner enables it.
+- Documentation: add the 0.5.0 [publication record](docs/evals/2026-11-15-v0.5.0-publication.md).
+- Testing: `verify-release-download.yml` checks v0.5.0 by default and, from
+  0.5.0 on, runs the Linux archive with no system fonts.
 
 ## [0.5.0] - 2026-11-15
 

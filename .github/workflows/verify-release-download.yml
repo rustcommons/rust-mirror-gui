@@ -20,7 +20,7 @@ env:
   NAME: rust-mirror-gui
   REPO: ${{ github.repository }}
   # A pull request checks the release this workflow was added for.
-  TAG: ${{ inputs.tag || 'v0.4.3' }}
+  TAG: ${{ inputs.tag || 'v0.5.0' }}
 jobs:
   assets:
     runs-on: ubuntu-latest
@@ -114,12 +114,12 @@ jobs:
         run: |
           sed -n 1,2p /etc/os-release
           if command -v dnf >/dev/null; then
-            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig \
+            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi \
               xorg-x11-server-Xvfb xorg-x11-utils python3 tar gzip curl
           else
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
-            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig \
+            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 \
               xvfb x11-utils python3 curl ca-certificates
           fi
       - name: Launch scripts (this workflow's commit)
@@ -137,6 +137,11 @@ jobs:
           curl -fsSLO "$base/$tgz"; curl -fsSLO "$base/SHA256SUMS"
           sha256sum -c --ignore-missing SHA256SUMS
           tar -xzf "$tgz"
+          # From 0.5.0 on the fonts are built in: run with no system fonts at all.
+          if [ -f "$NAME-$version-x86_64-unknown-linux-gnu/LICENSE-DejaVu.txt" ]; then
+            rm -rf /usr/share/fonts /usr/local/share/fonts /etc/fonts
+            echo "system fonts and fontconfig settings removed"
+          fi
           exe="$NAME-$version-x86_64-unknown-linux-gnu/$NAME"
           cat "$NAME-$version-x86_64-unknown-linux-gnu/README.txt" | sed -n 1,12p
           "$exe" --worker --version < /dev/null | tee worker.txt
