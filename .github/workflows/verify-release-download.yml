@@ -70,7 +70,11 @@ jobs:
           Expand-Archive "dl\$zip" -DestinationPath run
           $exe = (Resolve-Path "run\$env:NAME-$version-x86_64-pc-windows-msvc\$env:NAME.exe").Path
           Get-ChildItem (Split-Path $exe) | Format-Table Name, Length
-          $out = & $exe --worker --version
+          # A GUI-subsystem program: PowerShell's & neither waits nor captures
+          # its output, so run it with Start-Process and a redirected stdout.
+          New-Item -ItemType File -Force empty.txt | Out-Null
+          Start-Process -FilePath $exe -ArgumentList '--worker', '--version' -Wait -NoNewWindow -RedirectStandardOutput worker.txt -RedirectStandardInput empty.txt
+          $out = Get-Content worker.txt -Raw
           $out
           if (-not ($out -match '"protocol":1')) { throw "worker did not report protocol 1" }
           ./qualification/capture-window.ps1 -Exe $exe -Out shots\window.png
