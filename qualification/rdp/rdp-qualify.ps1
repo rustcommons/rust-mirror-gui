@@ -35,6 +35,9 @@ function Record([string]$scenario, [bool]$pass, $details, [switch]$Limit) {
 # ---------------------------------------------------------------- setup
 $os = Get-CimInstance Win32_OperatingSystem
 Log "OS: $($os.Caption) $($os.BuildNumber); cores $([Environment]::ProcessorCount)"
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+Log "Processor: $($cpu.Name.Trim()) ($($cpu.NumberOfLogicalProcessors) logical, $($cpu.MaxClockSpeed) MHz)"
+Add-Content "$Out\results-header.txt" "processor=$($cpu.Name.Trim())"
 Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
 try { Enable-NetFirewallRule -DisplayGroup 'Remote Desktop' } catch { Log "firewall rule: $($_.Exception.Message)" }
 Start-Service TermService
