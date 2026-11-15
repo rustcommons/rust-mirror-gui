@@ -1,5 +1,11 @@
 # rust-mirror-gui
 
+[![CI](https://github.com/rustcommons/rust-mirror-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/rustcommons/rust-mirror-gui/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rustcommons/rust-mirror-gui/badge)](https://scorecard.dev/viewer/?uri=github.com/rustcommons/rust-mirror-gui)
+[![crates.io](https://img.shields.io/crates/v/rust-mirror-gui)](https://crates.io/crates/rust-mirror-gui)
+[![docs.rs](https://img.shields.io/docsrs/rust-mirror-gui)](https://docs.rs/rust-mirror-gui)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 A desktop app for building offline Rust toolchain mirrors with
 [rust-mirror](https://crates.io/crates/rust-mirror). Use it to choose
 toolchains and platforms, preview the files, download and verify them with live

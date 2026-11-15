@@ -1,0 +1,107 @@
+name: Reproducible build check
+
+# Builds the same commit twice, on separate fresh runners, with exactly the
+# release build (build-binaries-core.yml), then compares the SHA-256 of every
+# executable and every archive. It reports what it finds (in the job summary
+# and reproducibility.json); it does not claim bit-identical builds in advance.
+# The SBOM is not compared: CycloneDX gives every document a new serial number
+# and timestamp. Read-only: nothing is attested or uploaded to a release.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1' # Mondays
+  pull_request:
+    paths:
+      - .github/workflows/reproducible-build.yml
+      - .github/workflows/build-binaries-core.yml
+permissions:
+  contents: read
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  version:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: v
+        run: echo "version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
+
+  first:
+    needs: version
+    uses: $/.github/workflows/build-binaries-core.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.sha }}
+      version: ${{ needs.version.outputs.version }}
+      source-label: reproducibility check (not a release)
+      launch-test: false
+      artifact-prefix: first-
+
+  second:
+    needs: version
+    uses: $/.github/workflows/build-binaries-core.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.sha }}
+      version: ${{ needs.version.outputs.version }}
+      source-label: reproducibility check (not a release)
+      launch-test: false
+      artifact-prefix: second-
+
+  compare:
+    needs: [first, second]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: first-release-files
+          path: first
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: second-release-files
+          path: second
+      - name: Compare executables and archives
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, os, pathlib, tarfile, zipfile
+          def h(b): return hashlib.sha256(b).hexdigest()
+          def exe(path):
+              if path.suffix == '.zip':
+                  z = zipfile.ZipFile(path)
+                  name = [n for n in z.namelist() if n.endswith('.exe')][0]
+                  return h(z.read(name))
+              t = tarfile.open(path)
+              m = [m for m in t.getmembers() if m.name.endswith('/rust-mirror-gui')][0]
+              return h(t.extractfile(m).read())
+          rows = []
+          for a in sorted(pathlib.Path('first').glob('*')):
+              if a.name.endswith(('.zip', '.tar.gz')):
+                  b = pathlib.Path('second') / a.name
+                  ea, eb = exe(a), exe(b)
+                  rows.append({"file": a.name, "archive_identical": h(a.read_bytes()) == h(b.read_bytes()),
+                               "executable_identical": ea == eb, "executable_sha256": [ea, eb]})
+          report = {"commit": os.environ["GITHUB_SHA"], "run": os.environ["GITHUB_RUN_ID"], "results": rows}
+          pathlib.Path('reproducibility.json').write_text(json.dumps(report, indent=2) + "\n")
+          lines = ["| Archive | Executable identical | Archive identical |", "| --- | --- | --- |"]
+          for r in rows:
+              lines.append(f"| {r['file']} | {'yes' if r['executable_identical'] else 'NO'} | {'yes' if r['archive_identical'] else 'NO'} |")
+          text = "\n".join(lines)
+          print(text)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("## Reproducible build check\n\n" + text + "\n")
+          EOF
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reproducibility
+          path: reproducibility.json

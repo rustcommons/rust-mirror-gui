@@ -1,0 +1,67 @@
+name: Build and sign release binaries (reusable)
+
+# Releases only. Runs the release build (build-binaries-core.yml), then signs
+# here: build provenance for every file, and the SBOM for every archive.
+# Because the signing runs in this reusable workflow, isolated from the
+# workflow that calls it, the attestations meet SLSA v1 Build Level 3
+# (GitHub: "Using artifact attestations and reusable workflows to achieve
+# SLSA v1 Build Level 3"). Called by release-binaries.yml when publishing.
+#
+# Users verify with:
+#   gh attestation verify FILE --repo rustcommons/rust-mirror-gui \
+#     --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build
+        type: string
+        required: true
+      version:
+        description: Version, without "v" (from Cargo.toml at ref)
+        type: string
+        required: true
+      source-label:
+        description: What README.txt says it was built from (the tag)
+        type: string
+        required: true
+permissions:
+  contents: read
+env:
+  NAME: rust-mirror-gui
+jobs:
+  build:
+    uses: $/.github/workflows/build-binaries-core.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ inputs.ref }}
+      version: ${{ inputs.version }}
+      source-label: ${{ inputs.source-label }}
+
+  attest:
+    # Signed here, inside the reusable workflow (SLSA Build L3).
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-files
+          path: dist
+      - name: Attest build provenance (every file)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Attest the SBOM (each archive)
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: |
+            dist/*.zip
+            dist/*.tar.gz
+          sbom-path: dist/${{ env.NAME }}-${{ inputs.version }}.cdx.json

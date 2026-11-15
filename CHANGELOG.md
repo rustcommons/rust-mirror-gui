@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+- **Security baseline** (owner-approved 2026-11-15):
+  - Dependabot proposes monthly version updates for Cargo and GitHub
+    Actions (minor and patch grouped; 7-day cooldown; at most 2 open PRs per
+    ecosystem); security updates come at once. Its PRs run only the core
+    checks, and every PR workflow cancels a PR's superseded runs. Every
+    action is pinned to a full commit SHA.
+  - CI now runs zizmor (workflow security lint) and cargo-deny (RustSec
+    advisories, a license allowlist, crates.io-only sources; see
+    `deny.toml`). Four unmaintained crates that come only through eframe,
+    with no safe upgrade, are listed there with reasons.
+  - OpenSSF Scorecard runs on `main` and weekly.
+- **Release builds** (from the next release on):
+  - The build moved into the reusable, read-only `build-binaries-core.yml`.
+    For releases, `build-binaries.yml` runs it and signs the attestations
+    (SLSA Build L3).
+  - Each release gets a CycloneDX SBOM (`rust-mirror-gui-X.Y.Z.cdx.json`),
+    listed in `SHA256SUMS` and attested for every archive.
+  - `reproducible-build.yml` builds twice and compares the results. With
+    `/Brepro` on the Windows link, all four targets' executables and
+    archives were bit-identical
+    ([record](docs/evals/2026-11-15-reproducible-builds.md)).
+  - The release and download checks verify that attestations were signed by
+    the release commit's `build-binaries.yml` on GitHub-hosted runners, and
+    that the attested SBOM is exactly the published one.
+- **Trusted Publishing:** `trusted-publishing.yml` is ready for crates.io
+  Trusted Publishing; the current publishing process is unchanged until
+  the owner enables it.
 - Documentation: add the 0.5.0 [publication record](docs/evals/2026-11-15-v0.5.0-publication.md).
 - Testing: `verify-release-download.yml` checks v0.5.0 by default and, from
   0.5.0 on, runs the Linux archive with no system fonts.

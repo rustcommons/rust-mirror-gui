@@ -8,11 +8,18 @@ on:
 permissions:
   contents: read
 
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   lf-only:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Refuse CRLF in committed text files
         run: |
           bad=$(git ls-files --eol | grep -E '^i/(crlf|mixed)' | grep -v 'attr/-text' || true)

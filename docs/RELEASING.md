@@ -25,8 +25,14 @@ publishes from the owner's machine.
    - open a publication-record PR.
 4. **Binaries:** pushing the tag starts
    [`release-binaries.yml`](../.github/workflows/release-binaries.yml). It
-   waits for the release from step 3, then attaches the binaries described
-   below. Check its run, and record it in the publication record.
+   waits for the release from step 3, has the reusable
+   [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build
+   them (with
+   [`build-binaries-core.yml`](../.github/workflows/build-binaries-core.yml))
+   and sign them, then attaches the binaries described below. The same tag push
+   also starts [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml).
+   While the owner publishes by hand (step 2), it only checks that the
+   published crate is the tag's source. Check its run, and record it in the publication record.
 5. **Downloads, as a user gets them:** run
    [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
    (Actions → Verify release downloads, `tag`). It downloads the live assets,
@@ -47,7 +53,8 @@ asset names and archive layout are shared with rust-mirror.
 | `rust-mirror-gui-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` | an `almalinux:8` container (glibc 2.28, pinned by digest) on `ubuntu-22.04`; the run log records the highest `GLIBC_` symbol version. Not musl: the window loads X11, Wayland and GL libraries at run time |
 | `rust-mirror-gui-X.Y.Z-aarch64-apple-darwin.tar.gz` | `macos-15` (macOS 11 or newer) |
 | `rust-mirror-gui-X.Y.Z-x86_64-apple-darwin.tar.gz` | `macos-15-intel` (macOS 11 or newer) |
-| `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name |
+| `rust-mirror-gui-X.Y.Z.cdx.json` | the release's CycloneDX SBOM (from 0.5.1 on; name shared with rust-mirror): `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
+| `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name; the archives and, from 0.5.1 on, the SBOM |
 
 - **Archive layout:** each archive holds one folder,
   `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
@@ -57,8 +64,10 @@ asset names and archive layout are shared with rust-mirror.
 - **How they are built:**
   - Rust 1.95.0 (the MSRV and CI toolchain);
   - `cargo build --release --locked`;
-  - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static'` in the
-    release job only (CI and development builds are unchanged). The C runtime
+  - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static -C
+    link-arg=/Brepro'` in the release job only (CI and development builds
+    are unchanged). `/Brepro` makes the linker write content hashes instead
+    of timestamps, so two builds can be identical. The C runtime
     is linked statically, so users need no Visual C++ Redistributable. The
     job lists the executable's DLL imports and fails if any `vcruntime`,
     `msvcp`, `ucrtbase` or `api-ms-win-crt-*` DLL remains;
@@ -75,11 +84,37 @@ asset names and archive layout are shared with rust-mirror.
     settings are deleted first, to prove the built-in fonts suffice. It
     must start its worker, map the "rust-mirror GUI" window on Xvfb and draw
     it (`qualification/linux-launch.sh`). Publishing waits for this job.
-- **Attestations:** every archive and `SHA256SUMS` get a GitHub artifact
-  attestation (Sigstore build provenance), using
-  `actions/attest-build-provenance` v4.2.2 pinned by commit. They are
-  verified before and after the upload. Users verify with
-  `gh attestation verify <file> --repo rustcommons/rust-mirror-gui`.
+- **Attestations (SLSA Build L3 from 0.5.1 on):**
+  - every file (archives, SBOM, `SHA256SUMS`) gets a build-provenance
+    attestation (`actions/attest-build-provenance` v4.2.2);
+  - every archive gets an SBOM attestation (`actions/attest-sbom` v4.1.0);
+  - both are signed inside the reusable `build-binaries.yml`, isolated from
+    the calling workflow, as GitHub describes for SLSA v1 Build Level 3. It
+    runs the build in the read-only `build-binaries-core.yml` first; the
+    same core is what dry runs use;
+  - they are verified before and after the upload.
+
+  Users verify with:
+
+  ```sh
+  gh attestation verify FILE --repo rustcommons/rust-mirror-gui \
+    --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
+  ```
+
+  The release workflow and `verify-release-download.yml` check more: the
+  signer and source digests must both be the release commit
+  (`--signer-digest`, `--source-digest`), and the attestation must come
+  from a GitHub-hosted runner (`--deny-self-hosted-runners`). So the same
+  workflow path at another commit does not pass. For the SBOM attestation
+  they also check that the attested SBOM is exactly the published file.
+
+  0.4.3 and 0.5.0 were signed by `release-binaries.yml` itself (use that
+  file name as the signer) and have no SBOM.
+- **Reproducibility:** `reproducible-build.yml` builds the same commit twice
+  on fresh runners with `build-binaries-core.yml` and compares every executable
+  and archive (weekly, and on PRs that change the build). Its results are
+  recorded as they are; see
+  [the reproducibility record](evals/2026-11-15-reproducible-builds.md).
 - **What a backfill's provenance names:** it records the workflow run's
   revision (main), not the tagged commit. Each archive's `README.txt`
   therefore states the tag and commit it was built from ("Built from"), and
@@ -96,9 +131,13 @@ asset names and archive layout are shared with rust-mirror.
   on the release. It never uses `--clobber` and never deletes an asset. A
   published asset is never replaced; if a binary is wrong, ship a new
   version.
-- **Least privilege:** only the final publish job can write contents,
-  request an OIDC token and write attestations. All other jobs are
-  read-only.
+- **Least privilege:**
+  - only the publish job can write contents (upload assets);
+  - only the attest job in `build-binaries.yml` requests an OIDC token and
+    writes attestations, and that workflow runs only when publishing;
+  - dry runs and the reproducibility check call the read-only
+    `build-binaries-core.yml`, which has no signing job;
+  - all other jobs are read-only.
 - **Verified after upload:** the publish job downloads the live assets,
   checks them against `SHA256SUMS`, and verifies every attestation.
 

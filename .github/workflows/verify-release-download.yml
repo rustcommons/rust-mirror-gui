@@ -21,8 +21,15 @@ env:
   REPO: ${{ github.repository }}
   # A pull request checks the release this workflow was added for.
   TAG: ${{ inputs.tag || 'v0.5.0' }}
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   assets:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,23 +41,47 @@ jobs:
         run: |
           mkdir dl && cd dl
           gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[]|"\(.name) \(.size)"' | tee ../assets.txt
-          [ "$(wc -l < ../assets.txt)" -eq 5 ] || { echo "::error::expected 4 archives and SHA256SUMS"; exit 1; }
           gh release download "$TAG" --repo "$REPO"
           cat SHA256SUMS
           sha256sum -c SHA256SUMS
-          [ "$(wc -l < SHA256SUMS)" -eq 4 ] || { echo "::error::SHA256SUMS must list 4 archives"; exit 1; }
+          # 0.4.3 and 0.5.0: 4 archives, signed by release-binaries.yml.
+          # Later releases: 4 archives and the SBOM, signed by the reusable
+          # build-binaries.yml (SLSA Build L3), with an SBOM attestation too.
+          if ls *.cdx.json >/dev/null 2>&1; then
+            files=5; signer=build-binaries.yml
+            # Built from the tag push: source and signer are the tag's commit,
+            # on GitHub-hosted runners.
+            commit=$(gh api "repos/$REPO/commits/$TAG" -q .sha)
+            strict="--signer-digest $commit --source-digest $commit --deny-self-hosted-runners"
+          else
+            # 0.4.3 and 0.5.0 keep the identity they were published with.
+            files=4; signer=release-binaries.yml; strict=""
+          fi
+          [ "$(wc -l < SHA256SUMS)" -eq $files ] || { echo "::error::SHA256SUMS must list $files files"; exit 1; }
+          [ "$(wc -l < ../assets.txt)" -eq $((files + 1)) ] || { echo "::error::expected $files files and SHA256SUMS"; exit 1; }
           for f in *; do
-            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release-binaries.yml" >/dev/null
-            echo "attestation verified: $f"
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict >/dev/null
+            echo "provenance verified ($signer): $f"
           done
+          if [ $files -eq 5 ]; then
+            for f in *.zip *.tar.gz; do
+              gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict \
+                --predicate-type https://cyclonedx.org/bom --format json > ../att.json
+              (cd .. && python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dl/*.cdx.json)
+              echo "SBOM attestation verified, same SBOM as the release's: $f"
+            done
+            python3 -c "import json,glob; d=json.load(open(glob.glob('*.cdx.json')[0])); print('SBOM:', d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')"
+          fi
           for f in *.tar.gz; do echo "== $f"; tar -tzf "$f"; done
           echo "== zip"; python3 -c "import zipfile,glob; [print(n) for n in zipfile.ZipFile(glob.glob('*.zip')[0]).namelist()]"
 
   windows:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
     runs-on: windows-2022
     steps:
       - name: Capture script (this workflow's commit)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: qualification
           persist-credentials: false
@@ -78,13 +109,15 @@ jobs:
           $out
           if (-not ($out -match '"protocol":1')) { throw "worker did not report protocol 1" }
           ./qualification/capture-window.ps1 -Exe $exe -Out shots\window.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-window
           path: shots
 
   linux:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -106,7 +139,7 @@ jobs:
               xvfb x11-utils python3 curl ca-certificates
           fi
       - name: Launch scripts (this workflow's commit)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: tools
           sparse-checkout: qualification
@@ -130,7 +163,7 @@ jobs:
           "$exe" --worker --version < /dev/null | tee worker.txt
           grep -q '"protocol":1' worker.txt
           sh tools/qualification/linux-launch.sh "$exe" shots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: linux-window-${{ strategy.job-index }}
