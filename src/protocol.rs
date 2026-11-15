@@ -18,8 +18,11 @@ pub const VERSION_ARGS: &[&str] = &[WORKER_ARG, "--version"];
 pub const CANCEL_LINE: &str = "{\"type\":\"cancel\"}\n";
 /// Heartbeat interval assumed when `hello` does not state one (spec: about 1 s).
 pub const DEFAULT_HEARTBEAT_MS: u64 = 1000;
-/// Longest stdout line accepted from the backend.
-pub const MAX_LINE: usize = 1024 * 1024;
+/// Longest stdout line accepted from the backend. A crate preview's result
+/// line grows with the catalog (about 4 KB per crate version, so about 1.2 MB
+/// for 291 versions and over 12 MB at the default 3,000-version limit); the
+/// earlier 1 MiB limit made larger previews fail in the window.
+pub const MAX_LINE: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Hello {

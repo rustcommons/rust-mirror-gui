@@ -13,8 +13,9 @@ use std::time::Duration;
 
 /// Preview older than this gets a stale warning.
 const STALE_AFTER: Duration = Duration::from_secs(24 * 3600);
-/// Rows rendered at once in the preview table (filter to narrow).
-const MAX_ROWS: usize = 400;
+/// Rows listed in the preview table (only the visible ones are laid out;
+/// the filter narrows the list).
+const MAX_ROWS: usize = 10_000;
 
 #[derive(Default)]
 pub(super) struct CrateState {
@@ -718,6 +719,32 @@ impl App {
                 .color(RED),
             );
         }
+        // rust-mirror 0.5.1: index entries for a crate that differ only in
+        // build metadata. None of them was selected; they are served as is.
+        for w in plan["index_warnings"].as_array().into_iter().flatten() {
+            let versions: Vec<String> = w["versions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|v| {
+                    let yanked = if v["yanked"] == json!(true) {
+                        ", yanked"
+                    } else {
+                        ""
+                    };
+                    format!("{}{yanked}", s(v, "version"))
+                })
+                .collect();
+            ui.label(
+                RichText::new(format!(
+                    "⚠ crates.io lists {} {} more than once, differing only in build metadata ({}). None of these was selected; the mirror serves the index entries unchanged.",
+                    s(w, "name"),
+                    s(w, "normalized_version"),
+                    versions.join("; ")
+                ))
+                .color(AMBER),
+            );
+        }
         for w in list(&plan["warnings"]) {
             ui.label(RichText::new(format!("⚠ {w}")).color(AMBER));
         }
@@ -768,71 +795,101 @@ impl App {
             })
             .collect();
         let mut explain = None;
+        // Fixed columns and one line per row, so only the visible rows are laid
+        // out each frame (`show_rows`). Laying out every row on every frame
+        // cost about a core with software rendering during a download.
+        // Truncated cells show their full text on hover; "Why?" explains more.
+        const WIDTHS: [f32; 5] = [170.0, 100.0, 80.0, 120.0, 46.0];
+        let row_h = ui.spacing().interact_size.y;
+        let cell = |ui: &mut egui::Ui, w: f32, text: egui::WidgetText| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(w, row_h),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_min_width(w);
+                    ui.add(egui::Label::new(text).truncate())
+                },
+            )
+            .inner
+        };
+        ui.horizontal(|ui| {
+            for (h, w) in ["Crate", "Version", "Size", "Flags", ""].iter().zip(WIDTHS) {
+                cell(ui, w, RichText::new(*h).strong().into());
+            }
+            ui.label(RichText::new("Included because").strong());
+        });
+        let visible: Vec<&&Value> = shown.iter().take(MAX_ROWS).collect();
         egui::ScrollArea::vertical()
             .id_salt("crate-rows")
             .max_height(320.0)
-            .show(ui, |ui| {
-                egui::Grid::new("crate-rows-grid")
-                    .striped(true)
-                    .num_columns(6)
-                    .spacing([12.0, 3.0])
-                    .show(ui, |ui| {
-                        // Table cells keep their width; long cells wrap explicitly.
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                        for h in ["Crate", "Version", "Size", "Flags", "", "Included because"] {
-                            ui.label(RichText::new(h).strong());
+            .auto_shrink([false, true])
+            .show_rows(ui, row_h, visible.len(), |ui, range| {
+                for i in range {
+                    let r = visible[i];
+                    let mut flags = Vec::new();
+                    if r["locked_yanked"] == json!(true) {
+                        flags.push("yanked, kept for a Cargo.lock");
+                    } else if r["yanked"] == json!(true) {
+                        flags.push("yanked");
+                    }
+                    if r["lock_only"] == json!(true) {
+                        flags.push("lock-only");
+                    }
+                    if r["retained_from_previous"] == json!(true) {
+                        flags.push("kept from previous");
+                    }
+                    let roots = list(&r["root_aliases"]);
+                    let why = if !roots.is_empty() {
+                        format!("listed in catalog ({})", roots.join(", "))
+                    } else {
+                        let p = &r["primary_reason"];
+                        let parent = s(p, "parent");
+                        if parent.is_empty() {
+                            "dependency".into()
+                        } else {
+                            format!("needed by {parent} ({})", s(p, "requirement"))
                         }
-                        ui.end_row();
-                        for r in shown.iter().take(MAX_ROWS) {
-                            ui.label(s(r, "name"));
-                            ui.label(RichText::new(s(r, "version")).monospace());
-                            match u(r, "expected_bytes") {
-                                Some(b) => ui.label(human_bytes(b)),
-                                None => ui.label(RichText::new("unknown").weak()),
-                            };
-                            let mut flags = Vec::new();
-                            if r["locked_yanked"] == json!(true) {
-                                flags.push("yanked, kept for a Cargo.lock");
-                            } else if r["yanked"] == json!(true) {
-                                flags.push("yanked");
-                            }
-                            if r["lock_only"] == json!(true) {
-                                flags.push("lock-only");
-                            }
-                            if r["retained_from_previous"] == json!(true) {
-                                flags.push("kept from previous");
-                            }
-                            // A bounded column, so the reason keeps room.
-                            ui.vertical(|ui| {
-                                ui.set_max_width(140.0);
-                                ui.add(egui::Label::new(flags.join(", ")).wrap());
-                            });
-                            let roots = list(&r["root_aliases"]);
-                            let why = if !roots.is_empty() {
-                                format!("listed in catalog ({})", roots.join(", "))
-                            } else {
-                                let p = &r["primary_reason"];
-                                let parent = s(p, "parent");
-                                if parent.is_empty() {
-                                    "dependency".into()
-                                } else {
-                                    format!("needed by {parent} ({})", s(p, "requirement"))
+                    };
+                    let locks = lock_sources(r);
+                    let why = match (locks.is_empty(), has_manual_source(r)) {
+                        (true, _) => why,
+                        (false, false) => format!("Cargo.lock: {}", locks.join(", ")),
+                        (false, true) => format!("{why}; Cargo.lock: {}", locks.join(", ")),
+                    };
+                    if i % 2 == 1 {
+                        let stripe = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            egui::vec2(ui.available_width(), row_h),
+                        );
+                        ui.painter()
+                            .rect_filled(stripe, 0.0, ui.visuals().faint_bg_color);
+                    }
+                    ui.horizontal(|ui| {
+                        cell(ui, WIDTHS[0], s(r, "name").into());
+                        cell(
+                            ui,
+                            WIDTHS[1],
+                            RichText::new(s(r, "version")).monospace().into(),
+                        );
+                        match u(r, "expected_bytes") {
+                            Some(b) => cell(ui, WIDTHS[2], human_bytes(b).into()),
+                            None => cell(ui, WIDTHS[2], RichText::new("unknown").weak().into()),
+                        };
+                        let flags = flags.join(", ");
+                        cell(ui, WIDTHS[3], flags.clone().into()).on_hover_text(flags);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(WIDTHS[4], row_h),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                if ui.small_button("Why?").clicked() {
+                                    explain = Some((s(r, "name"), s(r, "version")));
                                 }
-                            };
-                            let locks = lock_sources(r);
-                            let why = match (locks.is_empty(), has_manual_source(r)) {
-                                (true, _) => why,
-                                (false, false) => format!("Cargo.lock: {}", locks.join(", ")),
-                                (false, true) => format!("{why}; Cargo.lock: {}", locks.join(", ")),
-                            };
-                            if ui.small_button("Why?").clicked() {
-                                explain = Some((s(r, "name"), s(r, "version")));
-                            }
-                            // The reason is last so it can wrap on narrow windows.
-                            ui.add(egui::Label::new(why).wrap());
-                            ui.end_row();
-                        }
+                            },
+                        );
+                        ui.add(egui::Label::new(why.clone()).truncate())
+                            .on_hover_text(why);
                     });
+                }
             });
         if shown.len() > MAX_ROWS {
             ui.label(

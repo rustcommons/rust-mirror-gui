@@ -160,6 +160,49 @@ fn heartbeats_keep_a_slow_stage_alive() {
 
 #[cfg(feature = "fake-backend")]
 #[test]
+fn only_state_changes_wake_the_window() {
+    // Progress lines must not each wake the window (that redrew it
+    // continuously); stages, the result and the end of output still do.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let wakes = Arc::new(AtomicUsize::new(0));
+    let w = wakes.clone();
+    let mut job = Job::start(spec("ok", 5), move || {
+        w.fetch_add(1, Ordering::SeqCst);
+    })
+    .unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert_eq!(job.health(), Health::Succeeded);
+    let wakes = wakes.load(Ordering::SeqCst) as u64;
+    let events = job.progress.events;
+    assert!(
+        wakes >= 2,
+        "result and end of output wake the window ({wakes})"
+    );
+    assert!(
+        wakes * 2 < events,
+        "{wakes} wakes for {events} events: progress lines should not wake the window"
+    );
+}
+
+#[cfg(feature = "fake-backend")]
+#[test]
+fn a_large_result_line_is_read_whole() {
+    // A large crate preview's result is one multi-megabyte line.
+    let mut job = Job::start(spec("big-result", 10), || {}).unwrap();
+    wait_for(&mut job, Duration::from_secs(30), Job::finished);
+    assert_eq!(
+        job.health(),
+        Health::Succeeded,
+        "{:?}",
+        job.log.iter().map(|l| l.text.clone()).collect::<Vec<_>>()
+    );
+    let report = job.progress.result.clone().unwrap().report.unwrap();
+    assert_eq!(report["filler"].as_str().unwrap().len(), 3 * 1024 * 1024);
+}
+
+#[cfg(feature = "fake-backend")]
+#[test]
 fn garbage_lines_are_counted_not_fatal() {
     let mut job = Job::start(spec("garbage", 5), || {}).unwrap();
     wait_for(&mut job, Duration::from_secs(30), Job::finished);

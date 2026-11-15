@@ -83,6 +83,8 @@ pub struct App {
     last_page_extent: Option<(egui::Vec2, egui::Rect)>,
     /// The first window has been fitted to its monitor.
     window_fitted: bool,
+    /// Optional per-second redraw statistics (`RUST_MIRROR_GUI_FRAME_LOG`).
+    frame_log: Option<FrameLog>,
 }
 
 impl App {
@@ -138,6 +140,7 @@ impl App {
             crate_retention_pending_discover: false,
             last_page_extent: None,
             window_fitted: false,
+            frame_log: std::env::var_os("RUST_MIRROR_GUI_FRAME_LOG").map(FrameLog::new),
         }
     }
 
@@ -162,6 +165,12 @@ impl App {
 
     fn start(&mut self, ctx: &egui::Context, op: Op, spec: crate::job::Spec) {
         self.start_error = None;
+        // Progress output is not pushed to the window: while a job runs, the
+        // window redraws on a fixed timer (`JOB_REPAINT_INTERVAL`) and reads
+        // new output then. Redrawing on every line kept a software renderer
+        // (Remote Desktop, no GPU) busy on several cores during a crate sync.
+        // Events that change the state (retry, result, end of output) still
+        // wake the window at once.
         let wake = ctx.clone();
         match Job::start(spec, move || wake.request_repaint()) {
             Ok(job) => {
@@ -199,6 +208,10 @@ impl eframe::App for App {
 impl App {
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        let build_started = Instant::now();
+        if let Some(log) = &mut self.frame_log {
+            log.frame(&ctx);
+        }
         self.fit_window_to_monitor(&ctx);
         if let Backend::Checking(rx) = &self.backend {
             if let Ok(result) = rx.try_recv() {
@@ -213,7 +226,16 @@ impl App {
         }
         self.harvest();
         if self.job_running() || matches!(self.backend, Backend::Checking(_)) {
-            ctx.request_repaint_after(Duration::from_millis(250));
+            // Redraw on the regular tick, or sooner if the stalled warning
+            // becomes due before then, so it shows at once.
+            let stall = self
+                .job
+                .as_ref()
+                .and_then(|(_, j)| j.until_stalled())
+                .map(|d| d + Duration::from_millis(20));
+            ctx.request_repaint_after(
+                stall.map_or(JOB_REPAINT_INTERVAL, |d| d.min(JOB_REPAINT_INTERVAL)),
+            );
         }
         self.persist(false);
 
@@ -251,8 +273,90 @@ impl App {
                 });
             self.last_page_extent = Some((out.content_size, out.inner_rect));
         });
+        if let Some(log) = &mut self.frame_log {
+            log.build_ms += build_started.elapsed().as_secs_f64() * 1000.0;
+        }
     }
 }
+
+/// Diagnostics: when `RUST_MIRROR_GUI_FRAME_LOG` names a file, append one
+/// line per second with the number of redraws, what requested them and the
+/// input events seen. For finding out why the window redraws (CPU use).
+struct FrameLog {
+    path: std::ffi::OsString,
+    second: u64,
+    frames: u32,
+    /// Time spent building frames (layout), not counting rendering.
+    build_ms: f64,
+    causes: std::collections::BTreeMap<String, u32>,
+    events: std::collections::BTreeMap<String, u32>,
+}
+
+impl FrameLog {
+    fn new(path: std::ffi::OsString) -> Self {
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .and_then(|mut f| {
+                std::io::Write::write_all(
+                    &mut f,
+                    format!("started rust-mirror-gui {}\n", env!("CARGO_PKG_VERSION")).as_bytes(),
+                )
+            });
+        Self {
+            path,
+            second: 0,
+            frames: 0,
+            build_ms: 0.0,
+            causes: Default::default(),
+            events: Default::default(),
+        }
+    }
+
+    fn frame(&mut self, ctx: &egui::Context) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        if now != self.second && self.frames > 0 {
+            let line = format!(
+                "{} frames={} build_ms={:.0} causes={:?} events={:?}\n",
+                self.second, self.frames, self.build_ms, self.causes, self.events
+            );
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+            self.frames = 0;
+            self.build_ms = 0.0;
+            self.causes.clear();
+            self.events.clear();
+        }
+        self.second = now;
+        self.frames += 1;
+        for cause in ctx.repaint_causes() {
+            let text = cause.to_string();
+            let short = text
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&text)
+                .trim()
+                .to_string();
+            *self.causes.entry(short).or_default() += 1;
+        }
+        ctx.input(|i| {
+            for e in &i.raw.events {
+                let name = format!("{e:?}");
+                let kind: String = name.chars().take_while(|c| c.is_alphanumeric()).collect();
+                *self.events.entry(kind).or_default() += 1;
+            }
+        });
+    }
+}
+
+/// How often the window redraws while a job runs (status, progress, log).
+const JOB_REPAINT_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Room left on the monitor for a taskbar and the window's title bar and
 /// borders (points). The work area itself is not available to the app.
@@ -1216,9 +1320,13 @@ impl App {
             .min_col_width(110.0)
             .show(ui, |ui| {
                 // Keys fit the first column; values (the last column) wrap.
+                // The first value claims the full width, so the column does not
+                // change size as the text changes: egui repaints once more
+                // whenever a grid's size changes, and with new worker output on
+                // every frame that kept the window redrawing continuously.
                 let p = &job.progress;
                 ui.label("Stage");
-                ui.label(match &p.stage {
+                let stage = match &p.stage {
                     Some(s) => {
                         let n = match (s.index, s.total) {
                             (Some(i), Some(t)) => format!("  ({i} of {t})"),
@@ -1234,6 +1342,10 @@ impl App {
                         )
                     }
                     None => "waiting for the first event".into(),
+                };
+                ui.vertical(|ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.label(stage);
                 });
                 ui.end_row();
                 ui.label("Last event");
@@ -1465,36 +1577,32 @@ impl App {
             .collect();
         if !active.is_empty() {
             ui.label(RichText::new("Current files").strong());
-            egui::Grid::new("files")
-                .num_columns(3)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    // Table cells keep their width; long cells wrap explicitly.
-                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    for (path, f) in active {
-                        ui.label(&f.action);
-                        ui.label(RichText::new(short_path(path)).monospace());
-                        match (f.hashing, f.total) {
-                            (Some((c, Some(t))), _) if t > 0 => ui.add(
-                                egui::ProgressBar::new(c.min(t) as f32 / t as f32)
-                                    .desired_width(220.0)
-                                    .text(format!(
-                                        "hashing {} / {}",
-                                        human_bytes(c),
-                                        human_bytes(t)
-                                    )),
-                            ),
-                            (Some((c, _)), _) => ui.label(format!("hashing {}", human_bytes(c))),
-                            (None, Some(t)) if t > 0 => ui.add(
-                                egui::ProgressBar::new(f.bytes.min(t) as f32 / t as f32)
-                                    .desired_width(220.0)
-                                    .text(format!("{} / {}", human_bytes(f.bytes), human_bytes(t))),
-                            ),
-                            (None, _) => ui.label(human_bytes(f.bytes)),
-                        };
-                        ui.end_row();
-                    }
+            // Fixed column widths (not a Grid): the paths and byte counts
+            // change on every frame, and a resizing grid triggers extra repaints.
+            for (path, f) in active {
+                ui.horizontal(|ui| {
+                    fixed_cell(ui, 80.0, f.action.clone().into());
+                    fixed_cell(
+                        ui,
+                        300.0,
+                        RichText::new(short_path(path)).monospace().into(),
+                    );
+                    match (f.hashing, f.total) {
+                        (Some((c, Some(t))), _) if t > 0 => ui.add(
+                            egui::ProgressBar::new(c.min(t) as f32 / t as f32)
+                                .desired_width(220.0)
+                                .text(format!("hashing {} / {}", human_bytes(c), human_bytes(t))),
+                        ),
+                        (Some((c, _)), _) => ui.label(format!("hashing {}", human_bytes(c))),
+                        (None, Some(t)) if t > 0 => ui.add(
+                            egui::ProgressBar::new(f.bytes.min(t) as f32 / t as f32)
+                                .desired_width(220.0)
+                                .text(format!("{} / {}", human_bytes(f.bytes), human_bytes(t))),
+                        ),
+                        (None, _) => ui.label(human_bytes(f.bytes)),
+                    };
                 });
+            }
         }
 
         ui.horizontal(|ui| {
@@ -1507,17 +1615,27 @@ impl App {
             .corner_radius(6)
             .inner_margin(8)
             .show(ui, |ui| {
-                egui::ScrollArea::vertical()
+                // One unwrapped line per entry, so only the visible lines are
+                // laid out each frame (the log keeps up to 2,000 lines). Long
+                // lines scroll sideways inside the box.
+                let lines: Vec<&crate::job::LogLine> = job
+                    .log
+                    .iter()
+                    .filter(|l| show_stderr || l.kind != LogKind::Stderr)
+                    .collect();
+                let row_h = ui.text_style_height(&egui::TextStyle::Monospace);
+                egui::ScrollArea::both()
                     .id_salt("activity")
+                    // Following new lines without a smooth-scroll animation:
+                    // the animation repainted every frame while lines kept
+                    // arriving, which is costly with software rendering.
+                    .animated(false)
                     .max_height(260.0)
                     .stick_to_bottom(true)
                     .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        for line in job
-                            .log
-                            .iter()
-                            .filter(|l| show_stderr || l.kind != LogKind::Stderr)
-                        {
+                    .show_rows(ui, row_h, lines.len(), |ui, range| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        for line in &lines[range] {
                             let color = match line.kind {
                                 LogKind::Stage => Color32::from_rgb(121, 192, 255),
                                 LogKind::Artifact => Color32::from_rgb(126, 231, 135),
@@ -2028,6 +2146,20 @@ fn banner(ui: &mut egui::Ui, color: Color32, text: &str) {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(text).color(color));
         });
+}
+
+/// A left-aligned, one-line cell of fixed width; longer text ends in "…".
+fn fixed_cell(ui: &mut egui::Ui, width: f32, text: egui::WidgetText) -> egui::Response {
+    let height = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(
+        egui::vec2(width, height),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_width(width);
+            ui.add(egui::Label::new(text).truncate())
+        },
+    )
+    .inner
 }
 
 /// Labelled single-line field; the label is linked for screen readers.

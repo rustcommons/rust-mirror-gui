@@ -14,6 +14,44 @@
   build offline from the published mirror, and captures the window on a
   GPU-less Windows Server. See the [record](docs/evals/2026-11-14-windows-qualification.md).
 
+## [0.4.2] - 2026-11-15
+
+Lower CPU use while an operation runs, and large crate previews work. The
+built-in engine is rust-mirror 0.5.1. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.2.md).
+
+- **Fixed: high CPU use while an operation runs.** The window redrew for every
+  line of worker output, and a details table that changed size on every
+  redraw asked for another redraw, so the window redrew continuously during
+  a download. With software rendering (Remote Desktop, machines without a
+  GPU) that used several cores and slowed the download itself. The window
+  now redraws once a second while an operation runs, and at once for input,
+  the end of an operation, errors, retry waits and the stalled warning. The
+  crate preview table and the activity log lay out only the rows in view.
+  Window CPU during a crate download inside Remote Desktop, % of one core:
+  Linux with xrdp 317% → 14.4%; Windows on Intel Xeon 190% → 8.6%; Windows
+  on AMD EPYC 326% → 66%, where Windows' software renderer is about ten times
+  slower per frame (a known limit).
+- **Fixed: large crate previews failed in the window.** The worker's result
+  for a preview of about 300 crate versions is over 1 MiB, which the window
+  refused ("event line exceeds 1 MiB"). The limit is now 64 MiB.
+- **rust-mirror 0.5.1:** some crates list a version more than once on
+  crates.io, differing only in build metadata (for example `ndk-sys 0.4.0`,
+  needed by eframe). rust-mirror 0.5.0 refused such previews ("duplicate
+  index version"); 0.5.1 accepts them when none of those versions is
+  selected and shows a warning, which the crate preview now displays. A
+  selected version with a conflicting checksum is still refused, naming the
+  crate and versions.
+- The crate preview table has fixed columns; long flags and reasons end in
+  "…" with the full text on hover. It lists up to 10,000 rows (was 400).
+  Long lines in the activity log scroll sideways instead of wrapping.
+- Diagnostics: `RUST_MIRROR_GUI_FRAME_LOG=<file>` writes, once a second, how
+  often the window redrew and why; `RUST_MIRROR_GUI_PRESENT_MODE` picks the
+  swap-chain present mode.
+- Testing: a Remote Desktop qualification workflow runs the app inside a real
+  RDP session on Windows Server 2022 and 2025; xrdp on Linux was tested by
+  hand. See the [record](docs/evals/2026-11-15-remote-desktop.md).
+
 ## [0.4.1] - 2026-11-14
 
 Narrow windows and display scaling. The built-in engine is still

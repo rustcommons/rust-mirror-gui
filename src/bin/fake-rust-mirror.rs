@@ -4,7 +4,8 @@
 //! files and uses no network. Tests and GUI demos select behaviour with:
 //!
 //! - `FAKE_SCENARIO`: `ok` (default), `fail`, `stall`, `quiet-stage`,
-//!   `ignore-cancel`, `garbage`, `crash`, `legacy`, `protocol2`
+//!   `ignore-cancel`, `garbage`, `crash`, `legacy`, `protocol2`, `big-result`
+//!   (a 3 MiB result line, like a large crate preview)
 //! - `FAKE_STEP_MS`: delay between steps in ms (default 300)
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,6 +54,16 @@ fn main() {
         return;
     }
     let command = args.first().cloned().unwrap_or_default();
+    if scenario == "big-result" {
+        emit(&format!(
+            r#"{{"type":"hello","seq":0,"elapsed_ms":0,"protocol":1,"tool_version":"0.0.0-fake","command":"{command}"}}"#
+        ));
+        let filler = "x".repeat(3 * 1024 * 1024);
+        emit(&format!(
+            r#"{{"type":"result","seq":1,"elapsed_ms":1,"ok":true,"report":{{"filler":"{filler}"}},"error":null}}"#
+        ));
+        return;
+    }
     let has = |flag: &str| args.iter().any(|a| a == flag);
     // `--proxy-password-stdin`: consume one line first, as rust-mirror does.
     // Only its presence is reported; the value is never printed.
