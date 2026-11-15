@@ -54,12 +54,15 @@ RUN = {
 Windows 10 or 11, or Windows Server 2022 or newer. Nothing else to install:
 the C runtime is built in, so no Visual C++ Redistributable is needed.""",
     "linux": """Extract the folder and run ./rust-mirror-gui from it.
-Built and tested on Ubuntu 22.04 (glibc {glibc_built}); the highest glibc
-symbol it uses is GLIBC_{glibc}, so glibc {glibc_built} or newer is supported.
-The window needs a Vulkan or OpenGL driver and xkbcommon at run time.
-Desktop distributions already have them. On a minimal or GPU-less
-Debian/Ubuntu machine, install:
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1""",
+It needs glibc {glibc} or newer (its highest GLIBC_ symbol version), for
+example RHEL, AlmaLinux or Rocky Linux 8, Ubuntu 20.04, Debian 10, SLES 15 SP4 or
+newer. It was built on AlmaLinux 8 (glibc {glibc_built}) and tested to start
+on AlmaLinux 8 and Ubuntu 20.04.
+The window needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver, and
+xkbcommon. Desktop distributions already have them. On a minimal or
+GPU-less machine, install:
+  Debian/Ubuntu:  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6
+  RHEL family:    sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi""",
     "macos": """Extract the folder and run ./rust-mirror-gui from Terminal.
 macOS 11 or newer ({arch}).""",
 }
