@@ -93,7 +93,7 @@ rust-mirror-gui
 
 When the app starts, the top bar should say
 **"✔ rust-mirror 0.5.1 built in · event protocol 1"** (the version of the
-built-in engine; 0.4.3 has 0.5.1). If it shows a red message,
+built-in engine; 0.5.0 has 0.5.1). If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes
