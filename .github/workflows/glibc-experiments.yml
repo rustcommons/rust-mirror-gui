@@ -146,7 +146,7 @@ jobs:
 
   summary:
     needs: launch
-    if: always()
+    if: always() && needs.launch.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
