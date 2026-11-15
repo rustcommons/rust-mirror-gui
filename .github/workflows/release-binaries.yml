@@ -128,7 +128,8 @@ jobs:
             os: ubuntu-22.04
             # Build against an old glibc (2.28) so the binary also runs on
             # RHEL/AlmaLinux 8, Ubuntu 20.04 and Debian 10 or newer.
-            container: almalinux:8
+            # pinned by digest (almalinux:8, updated 2026-10-27)
+            container: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
           - target: aarch64-apple-darwin
             os: macos-15
           - target: x86_64-apple-darwin
@@ -240,7 +241,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: ['almalinux:8', 'ubuntu:20.04']
+        # pinned by digest: almalinux:8 (2026-10-27), ubuntu:20.04 (2025-04-09)
+        container: ['almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b', 'ubuntu:20.04@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214']
     container: ${{ matrix.container }}
     steps:
       - name: Runtime and test packages
