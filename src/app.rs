@@ -206,6 +206,7 @@ impl eframe::App for App {
 impl App {
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        let build_started = Instant::now();
         if let Some(log) = &mut self.frame_log {
             log.frame(&ctx);
         }
@@ -261,6 +262,9 @@ impl App {
                 });
             self.last_page_extent = Some((out.content_size, out.inner_rect));
         });
+        if let Some(log) = &mut self.frame_log {
+            log.build_ms += build_started.elapsed().as_secs_f64() * 1000.0;
+        }
     }
 }
 
@@ -271,6 +275,8 @@ struct FrameLog {
     path: std::ffi::OsString,
     second: u64,
     frames: u32,
+    /// Time spent building frames (layout), not counting rendering.
+    build_ms: f64,
     causes: std::collections::BTreeMap<String, u32>,
     events: std::collections::BTreeMap<String, u32>,
 }
@@ -291,6 +297,7 @@ impl FrameLog {
             path,
             second: 0,
             frames: 0,
+            build_ms: 0.0,
             causes: Default::default(),
             events: Default::default(),
         }
@@ -302,8 +309,8 @@ impl FrameLog {
             .map_or(0, |d| d.as_secs());
         if now != self.second && self.frames > 0 {
             let line = format!(
-                "{} frames={} causes={:?} events={:?}\n",
-                self.second, self.frames, self.causes, self.events
+                "{} frames={} build_ms={:.0} causes={:?} events={:?}\n",
+                self.second, self.frames, self.build_ms, self.causes, self.events
             );
             let _ = std::fs::OpenOptions::new()
                 .create(true)
@@ -311,6 +318,7 @@ impl FrameLog {
                 .open(&self.path)
                 .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
             self.frames = 0;
+            self.build_ms = 0.0;
             self.causes.clear();
             self.events.clear();
         }

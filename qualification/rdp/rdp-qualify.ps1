@@ -89,6 +89,19 @@ $w = [System.Diagnostics.Process]::Start($psi)
 $w.StandardOutput.ReadToEnd() | Set-Content "$Out\catalog-write.jsonl"
 $w.WaitForExit()
 if (-not (Test-Path "$Share\data\crates.toml")) { throw "could not write the crate catalog" }
+# A smaller catalog (181 versions) that 0.4.1 can preview too, for the CPU
+# comparison: 0.4.1 cannot read the result of the larger preview (1 MiB limit).
+$small = Get-Content "$Share\data\catalog.json" -Raw | ConvertFrom-Json
+$small.crates.PSObject.Properties.Remove('aws-sdk-s3')
+$small.crates.PSObject.Properties.Remove('aws-config')
+$small | ConvertTo-Json -Depth 10 | Set-Content "$Share\data\catalog-small.json"
+$psi = New-Object System.Diagnostics.ProcessStartInfo "$Share\app\rust-mirror-gui.exe"
+$psi.Arguments = "--worker crates-write --input `"$Share\data\catalog-small.json`" --output `"$Share\data\crates-small.toml`""
+$psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true
+$w = [System.Diagnostics.Process]::Start($psi)
+[void]$w.StandardOutput.ReadToEnd()
+$w.WaitForExit()
+if (-not (Test-Path "$Share\data\crates-small.toml")) { throw "could not write the small crate catalog" }
 icacls "$Share\data" /grant 'rdpqual:(OI)(CI)M' | Out-Null
 
 # --------------------------------------------------------- helpers
@@ -151,15 +164,16 @@ function Files-Done {
     }
     -1
 }
-function Settings([string]$run) {
-    @{ crate_catalog_path = "$Share\data\crates.toml"; crate_output = "$Share\data\$run"; crate_previous = '' }
+function Settings([string]$run, [string]$catalog = 'crates.toml') {
+    @{ crate_catalog_path = "$Share\data\$catalog"; crate_output = "$Share\data\$run"; crate_previous = '' }
 }
-function Start-Sync([string]$exe, [string]$run) {
-    $l = In 'launch' @{ exe = $exe; settings = (Settings $run) }
+function Start-Sync([string]$exe, [string]$run, [string]$catalog = 'crates.toml') {
+    $l = In 'launch' @{ exe = $exe; settings = (Settings $run $catalog) }
     [void](In 'invoke' @{ name = 'Crate preview & sync' })
     [void](In 'invoke' @{ name = 'Preview' })
     $p = Wait-Text '^Preview: \d+ crates' 600
     [void](In 'invoke' @{ name = 'Approve this preview and download' })
+    [void](Wait-Text '\d+ of \d+ files done' 300)
     @{ launch = $l; preview = $p }
 }
 
@@ -187,6 +201,8 @@ $p = Wait-Text '^Preview: \d+ crates' 600
 $idle = In 'cpu' @{ seconds = 30 }
 Record 'idle-cpu-and-memory' ($idle.gui_cpu_pct -lt 3 -and $idle.gui_working_set_mib -lt 300) $idle
 [void](In 'invoke' @{ name = 'Approve this preview and download' })
+# The sync first resolves again (10-20 s), then downloads.
+[void](Wait-Text '\d+ of \d+ files done' 300)
 # Each in-session call takes a second or two, so these samples are that far
 # apart; the window itself redraws every 0.5 s while a job runs.
 $samples = @()
@@ -253,12 +269,12 @@ Record 'minimize-client-mid-sync' ([bool]$fin -and $c.ok) @{ cpu_while_minimized
 # 7. CPU of the 0.4.1 release in the same session and sync, for comparison.
 if ($OldExe) {
     [void](In 'stop')
-    [void](Start-Sync "$Share\old\rust-mirror-gui.exe" 'run-old')
+    [void](Start-Sync "$Share\old\rust-mirror-gui.exe" 'run-old' 'crates-small.toml')
     Start-Sleep -Seconds 2
     $old = In 'cpu' @{ seconds = 8 }
     [void](Wait-Text '^Verified crate mirror' 180)
     [void](In 'stop')
-    [void](Start-Sync "$Share\app\rust-mirror-gui.exe" 'run-new')
+    [void](Start-Sync "$Share\app\rust-mirror-gui.exe" 'run-new' 'crates-small.toml')
     Start-Sleep -Seconds 2
     $new = In 'cpu' @{ seconds = 8 }
     [void](Wait-Text '^Verified crate mirror' 180)
