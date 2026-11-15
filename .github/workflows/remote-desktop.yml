@@ -22,10 +22,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: dtolnay/rust-toolchain@1961bfc0c4a8bf07e0a0c98e1e2459c642ea70a0 # 1.95.0
+        with:
+          toolchain: 1.95.0
       - name: Build the 0.4.1 release for comparison
         shell: pwsh
         run: |
@@ -42,7 +45,7 @@ jobs:
         if: always()
         shell: pwsh
         run: ./qualification/rdp/cleanup.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: rdp-${{ matrix.os }}

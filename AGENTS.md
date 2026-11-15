@@ -68,6 +68,37 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   crate dependency), documented supported platforms, and CI-only glibc
   experiments. The Linux download stays the glibc 2.28 build.
 
+## Security baseline (owner-approved 2026-11-15)
+
+- **`main` changes only through pull requests.** The org ruleset
+  "protect-main" requires a PR and the `lf-only` check, and forbids
+  force-push and deletion. Release tags `v*` can never be moved or deleted
+  ("protect-release-tags").
+- **Actions are pinned to full commit SHAs**, with the version as a trailing
+  comment (`uses: owner/action@<sha> # vX.Y.Z`). Dependabot
+  (`.github/dependabot.yml`) proposes updates weekly. Never add an unpinned
+  `uses:`.
+- **Least privilege:** every workflow's top-level `permissions` is read-only;
+  a job that needs more asks for it itself (`contents: write` only to upload
+  release assets; `id-token`/`attestations: write` only where it signs or
+  publishes).
+- **Gates on every PR** (fix findings; any suppression is inline with a
+  reason):
+  - `zizmor.yml` lints the workflows;
+  - the `cargo-deny` job in `ci.yml` applies `deny.toml` (RustSec
+    advisories, allowed licenses, bans, crates.io-only sources).
+  A new dependency's license must already be on the allowlist, or the owner
+  must approve adding it.
+- **Release builds** run only in the reusable `build-binaries.yml`, which
+  signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
+  compares two independent builds weekly.
+- **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
+- **Trusted Publishing:** `publish-crate.yml` (environment `crates-io`) is
+  ready, but not the release process until the owner enables it on
+  crates.io. Until then, publish as `docs/RELEASING.md` says.
+- **Security reports:** the org-wide `SECURITY.md` (in the `.github`
+  repository) applies; this repository has none of its own.
+
 ## Documentation and requirements traceability
 
 - Follow the [Rust Commons documentation conventions](https://github.com/rustcommons/.github/blob/main/docs/DOCUMENTATION.md).
@@ -86,7 +117,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 
 - For a repository that ships versioned software, maintain a root `CHANGELOG.md` with an `Unreleased` section and dated, user-facing entries for shipped versions. Record noteworthy changes and their user impact as work is completed; do not substitute a roadmap, Git tag, CI log or validation report for a changelog.
 - Before publishing a version, commit its release notes under `docs/releases/vX.Y.Z.md` and link them, the changelog, and the maintained release policy. Explain changes, upgrade or dependency impact, validation and known limits; distinguish software changes from documentation-only releases.
-- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release. Prebuilt binaries are authorized (2026-11-15) only through the release-binaries workflow (see docs/RELEASING.md); do not attach other new distribution artifacts without authorization.
+- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release. Prebuilt binaries are authorized (2026-11-15) only through the release-binaries workflow and its reusable build-binaries.yml (see docs/RELEASING.md); do not attach other new distribution artifacts without authorization.
 - Run the repository's release-documentation CI check before routine merges and release completion. For its first installation, review local checker/syntax evidence, register the workflow on the default branch, and require a green run before completing bootstrap or publishing notes. Verify the live GitHub Release and its tag, text and links after publication; a successful crate upload or tag alone is insufficient.
 - When backfilling history, reconstruct facts from existing tags, registry records and source/evidence. Preserve original source identities, distinguish original release dates from documentation backfill dates, and state unavailable historical validation. Never fabricate checks, move tags, republish versions, or imply that repository edits change immutable published archives.
 - For an organization profile, placeholder or project with no shipped version, record release verification as not applicable until its first authorized release. Do not invent versions, features, changelog history or GitHub Releases to satisfy this convention.

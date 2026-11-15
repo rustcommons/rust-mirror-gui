@@ -1,0 +1,31 @@
+# Weekly dependency updates (org security baseline, 2026-11-15).
+# Minor and patch updates are grouped into one PR per ecosystem; majors come
+# one by one. Every PR still needs CI green and review before it merges.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    # wait a week after a release before proposing it
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # wait a week after a release before proposing it
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Pinned on purpose to the toolchain-named ref (1.95.0 = the MSRV and
+      # CI toolchain); a new toolchain is a deliberate change.
+      - dependency-name: dtolnay/rust-toolchain

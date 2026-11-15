@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+- **Security baseline** (owner-approved 2026-11-15):
+  - Dependabot proposes weekly updates for Cargo and GitHub Actions (minor
+    and patch grouped; 7-day cooldown). Every action is pinned to a full
+    commit SHA.
+  - CI now runs zizmor (workflow security lint) and cargo-deny (RustSec
+    advisories, a license allowlist, crates.io-only sources; see
+    `deny.toml`). Four unmaintained crates that come only through eframe,
+    with no safe upgrade, are listed there with reasons.
+  - OpenSSF Scorecard runs on `main` and weekly.
+- **Release builds** (from the next release on):
+  - The build moved into the reusable `build-binaries.yml`, which signs
+    the attestations (SLSA Build L3).
+  - Each release gets a CycloneDX SBOM (`rust-mirror-gui-X.Y.Z.cdx.json`),
+    listed in `SHA256SUMS` and attested for every archive.
+  - `reproducible-build.yml` builds twice and compares the results.
+- **Trusted Publishing:** `publish-crate.yml` is ready for crates.io
+  Trusted Publishing; the current publishing process is unchanged until
+  the owner enables it.
+
 ## [0.5.0] - 2026-11-15
 
 Built-in fonts, and documented supported platforms. See the
