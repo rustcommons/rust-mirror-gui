@@ -60,6 +60,9 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 
   See [docs/RELEASING.md](docs/RELEASING.md).
   Do not publish placeholder crates to reserve names.
+- On 2026-11-15 the owner authorized publishing 0.4.3 (the wgpu limits fix)
+  to crates.io as the first release with prebuilt downloads, and decided not
+  to backfill downloads for 0.4.2.
 
 ## Documentation and requirements traceability
 

@@ -12,8 +12,9 @@ name: Release binaries
 #   post-publication step creates right after the tag);
 # - workflow_dispatch: `tag` (an existing release tag) and `dry_run` (true by
 #   default: build and verify everything, upload nothing) for backfills;
-# - pull_request that changes this workflow or packaging/: dry run of a
-#   backfill of the latest release (its tag, all checks, nothing uploaded).
+# - pull_request that changes the app, this workflow or packaging/: dry run of
+#   the pull request's own code, as the next release would build it (all
+#   builds, smoke and launch tests; nothing uploaded).
 # See docs/RELEASING.md.
 on:
   push:
@@ -29,6 +30,9 @@ on:
         default: true
   pull_request:
     paths:
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
       - .github/workflows/release-binaries.yml
       - packaging/**
       - qualification/linux-launch.sh
@@ -45,10 +49,11 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.which.outputs.tag }}
+      tag: ${{ steps.check.outputs.tag }}
       ref: ${{ steps.which.outputs.ref }}
       version: ${{ steps.check.outputs.version }}
       dry_run: ${{ steps.which.outputs.dry_run }}
+      pr: ${{ steps.which.outputs.pr }}
     steps:
       - id: which
         name: Which tag, commit and mode
@@ -56,19 +61,21 @@ jobs:
           EVENT: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-          GH_TOKEN: ${{ github.token }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
+          pr=false
           case "$EVENT" in
             push) tag="$GITHUB_REF_NAME"; dry=false; ref="$GITHUB_SHA" ;;
             workflow_dispatch) tag="$INPUT_TAG"; dry="$INPUT_DRY_RUN"; ref="$INPUT_TAG" ;;
-            # A pull request dry-runs a backfill of the latest release:
-            # the tagged source, all tag checks, nothing uploaded.
-            pull_request) tag=$(gh release view --repo "$REPO" --json tagName -q .tagName); dry=true; ref="$tag" ;;
+            # A pull request dry-runs its own head as the next release would
+            # build it; the tag comes from Cargo.toml and need not exist yet.
+            pull_request) tag=""; dry=true; ref="$PR_HEAD"; pr=true ;;
           esac
           if [ -n "$tag" ] && ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::not a release tag: $tag"; exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "ref=$ref" >> "$GITHUB_OUTPUT"; echo "dry_run=$dry" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry" >> "$GITHUB_OUTPUT"; echo "pr=$pr" >> "$GITHUB_OUTPUT"
           echo "tag '$tag', ref $ref, dry run: $dry"
       - uses: actions/checkout@v4
         with:
@@ -82,6 +89,7 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG:-v$version}" >> "$GITHUB_OUTPUT"
           echo "Cargo.toml version $version at $(git rev-parse HEAD)"
           if [ -n "$TAG" ]; then
             [ "${TAG#v}" = "$version" ] || { echo "::error::tag $TAG but Cargo.toml says $version"; exit 1; }
@@ -96,15 +104,17 @@ jobs:
           # The post-publication step creates the release right after the tag.
           for i in $(seq 1 60); do gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 && break; sleep 30; done
           python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
-      - name: Guard check against the latest release (dry run, read-only)
-        if: steps.which.outputs.dry_run == 'true'
+      - name: Release guard, read-only (dry run of an existing release)
+        if: steps.which.outputs.dry_run == 'true' && steps.which.outputs.pr == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.which.outputs.tag }}
         run: |
-          t="${TAG:-$(gh release view --repo "$REPO" --json tagName -q .tagName)}"
-          python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$t"
-          echo "Assets already on $t:"; gh release view "$t" --repo "$REPO" --json assets -q '.assets[].name'
+          python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
+          echo "Assets already on $TAG:"; gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name'
+      - name: Committed release documentation (pull request dry run)
+        if: steps.which.outputs.pr == 'true'
+        run: python3 scripts/check-release-docs.py --repo "$REPO"
 
   build:
     needs: prepare
@@ -211,7 +221,7 @@ jobs:
           python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE --name "$NAME" \
             --version "${{ needs.prepare.outputs.version }}" --target "${{ matrix.target }}" --out dist \
             --glibc "${{ steps.glibc.outputs.min }}" --glibc-built "${{ steps.glibc.outputs.built }}" \
-            --source "${{ needs.prepare.outputs.tag }} at commit $(git -C src rev-parse HEAD)"
+            --source "${{ needs.prepare.outputs.pr == 'true' && 'pull request (dry run, not a release)' || needs.prepare.outputs.tag }} at commit $(git -C src rev-parse HEAD)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.target }}

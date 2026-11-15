@@ -30,8 +30,10 @@ publishes from the owner's machine.
 
 ## Prebuilt binaries
 
-Authorized by the owner on 2026-11-15 for every release from then on.
-Earlier releases stay notes-only, except 0.4.2, which was backfilled. The
+Authorized by the owner on 2026-11-15 for every release from then on; 0.4.3
+is the first. Earlier releases stay notes-only (the owner decided not to
+backfill 0.4.2, whose Linux binary did not start without a GPU on Ubuntu
+20.04). The
 asset names and archive layout are shared with rust-mirror.
 
 | Asset | Built on |
@@ -95,14 +97,18 @@ asset names and archive layout are shared with rust-mirror.
 
 ### Dry runs and backfills
 
-- **Pull requests** that change the workflow or `packaging/` dry-run a
-  backfill of the latest release:
-  - its tag and its source, with all of the tag checks;
-  - build, smoke-test, package and checksum on all four targets;
-  - run the release guard read-only;
-  - upload nothing.
+- **Pull requests** that change the app (`src/`, `Cargo.toml`,
+  `Cargo.lock`), the workflow, `packaging/` or the launch scripts dry-run
+  their own head as the next release would build it:
+  - the version from `Cargo.toml`, without the tag checks (the tag doesn't
+    exist yet);
+  - build, smoke-test, package, launch-test on old Linux distributions and
+    checksum, on all four targets;
+  - check the committed release documentation;
+  - upload nothing. The archives' `README.txt` says "pull request (dry run,
+    not a release)".
 
-  Manual dispatch only works once the workflow is on `main`.
+  So a release PR proves its own binaries before the merge.
 - **Manual dispatch** (Actions → Release binaries → Run workflow):
   - `tag`: an existing release tag;
   - `dry_run`: true by default, which builds and verifies without uploading.

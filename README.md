@@ -16,21 +16,23 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.4.2.** 0.4.2 uses far less CPU while an operation runs (it
-matters most over Remote Desktop and without a GPU), handles large crate
-previews, and builds in rust-mirror 0.5.1. 0.4.1 made every page usable on
+**Status: 0.4.3.** 0.4.3 is the first release with prebuilt downloads for
+Windows, Linux and macOS, and its window opens on Linux machines without a
+GPU that have an older Mesa (for example Ubuntu 20.04). 0.4.2 uses far less
+CPU while an operation runs (it matters most over Remote Desktop and without
+a GPU), handles large crate previews, and builds in rust-mirror 0.5.1. 0.4.1 made every page usable on
 small windows and scaled displays. 0.4.0 added Cargo.lock import and crate
 retention. Tested inside real Remote Desktop sessions on Windows Server 2022
 and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.md));
 macOS runtime and screen readers are not yet verified; see
-[known limits](docs/releases/v0.4.2.md#validation-and-limits).
+[known limits](docs/releases/v0.4.3.md#validation-and-limits).
 
 ## Install
 
 ### Download a prebuilt binary
 
 Each [GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases)
-from 0.4.2 on has ready-to-run archives:
+from 0.4.3 on has ready-to-run archives:
 
 | System | File |
 | --- | --- |
@@ -48,7 +50,7 @@ so the Visual C++ Redistributable isn't required.
 
 ```powershell
 # Windows (PowerShell): compare with the line for this file in SHA256SUMS
-Get-FileHash .\rust-mirror-gui-0.4.2-x86_64-pc-windows-msvc.zip
+Get-FileHash .\rust-mirror-gui-0.4.3-x86_64-pc-windows-msvc.zip
 ```
 
 ```sh
@@ -61,7 +63,7 @@ was built by this repository's release workflow from the tagged source. With
 the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify rust-mirror-gui-0.4.2-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
+gh attestation verify rust-mirror-gui-0.4.3-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
 ```
 
 **The binaries are not code-signed**, so your system may warn the first time:
@@ -160,7 +162,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

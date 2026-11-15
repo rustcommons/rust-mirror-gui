@@ -56,7 +56,7 @@ look slightly different.
 
 **Easiest:** download the archive for your system from the
 [latest GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases/latest)
-(from 0.4.2 on), unpack it and run `rust-mirror-gui`. The binaries are not
+(from 0.4.3 on), unpack it and run `rust-mirror-gui`. The binaries are not
 code-signed: the README's
 [install section](../README.md#download-a-prebuilt-binary) shows how to check
 the download and what to do when Windows SmartScreen or macOS Gatekeeper
@@ -87,7 +87,7 @@ rust-mirror-gui
 
 When the app starts, the top bar should say
 **"✔ rust-mirror 0.5.1 built in · event protocol 1"** (the version of the
-built-in engine; 0.4.2 has 0.5.1). If it shows a red message,
+built-in engine; 0.4.3 has 0.5.1). If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes
