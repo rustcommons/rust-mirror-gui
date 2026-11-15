@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-15
+
+The window opens on Linux machines without a GPU that have an older Mesa,
+and this is the first release with prebuilt downloads. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.4.3.md).
+
+- **Fixed: the window did not open on some Linux machines without a GPU,**
+  for example Ubuntu 20.04, with "WGPU error: Limit 'max_color_attachments'
+  value 8 is better than allowed 2". The app now asks the graphics driver
+  for no more than it offers, but never less than egui needs; if the driver
+  offers less than that, it says which limits are short.
+- **Prebuilt binaries** on GitHub Releases (owner-authorized 2026-11-15),
+  for the first time:
+  - Windows x86-64 (`.zip`, C runtime linked statically, so no Visual C++
+    Redistributable is needed), Linux x86-64 (`.tar.gz`, glibc 2.28 or
+    newer), and macOS Apple silicon and Intel (`.tar.gz`);
+  - built from the tagged commit by `release-binaries.yml`, with
+    `SHA256SUMS` and GitHub build-provenance attestations;
+  - not code-signed (the README explains the SmartScreen and Gatekeeper
+    prompts).
+
+  The README now lists "Download a prebuilt binary" first, and
+  [docs/RELEASING.md](docs/RELEASING.md) describes the release procedure.
+  Earlier versions have no downloads.
 - Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
 - Documentation: add the 0.4.0 [publication record](docs/evals/2026-11-13-v0.4.0-publication.md), the
   Windows renderer finding in the [0.4.0 validation record](docs/evals/2026-11-13-v0.4.0-validation.md),

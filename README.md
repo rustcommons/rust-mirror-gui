@@ -16,16 +16,80 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.4.2.** 0.4.2 uses far less CPU while an operation runs (it
-matters most over Remote Desktop and without a GPU), handles large crate
-previews, and builds in rust-mirror 0.5.1. 0.4.1 made every page usable on
+**Status: 0.4.3.** 0.4.3 is the first release with prebuilt downloads for
+Windows, Linux and macOS, and its window opens on Linux machines without a
+GPU that have an older Mesa (for example Ubuntu 20.04). 0.4.2 uses far less
+CPU while an operation runs (it matters most over Remote Desktop and without
+a GPU), handles large crate previews, and builds in rust-mirror 0.5.1. 0.4.1 made every page usable on
 small windows and scaled displays. 0.4.0 added Cargo.lock import and crate
 retention. Tested inside real Remote Desktop sessions on Windows Server 2022
 and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.md));
 macOS runtime and screen readers are not yet verified; see
-[known limits](docs/releases/v0.4.2.md#validation-and-limits).
+[known limits](docs/releases/v0.4.3.md#validation-and-limits).
 
 ## Install
+
+### Download a prebuilt binary
+
+Each [GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases)
+from 0.4.3 on has ready-to-run archives:
+
+| System | File |
+| --- | --- |
+| Windows x86-64 | `rust-mirror-gui-<version>-x86_64-pc-windows-msvc.zip` |
+| Linux x86-64 (glibc 2.28 or newer: RHEL/AlmaLinux/Rocky 8, Ubuntu 20.04, Debian 10, SLES 15 SP4 or newer) | `rust-mirror-gui-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple silicon | `rust-mirror-gui-<version>-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `rust-mirror-gui-<version>-x86_64-apple-darwin.tar.gz` |
+
+Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
+the folder. No separate rust-mirror installation is needed. On Windows, no
+extra runtime is needed either: the C runtime is linked into the executable,
+so the Visual C++ Redistributable isn't required.
+
+**Check the download** against `SHA256SUMS` on the same release page:
+
+```powershell
+# Windows (PowerShell): compare with the line for this file in SHA256SUMS
+Get-FileHash .\rust-mirror-gui-0.4.3-x86_64-pc-windows-msvc.zip
+```
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS         # Linux
+shasum -a 256 -c --ignore-missing SHA256SUMS     # macOS
+```
+
+Every archive also has a signed build-provenance attestation, which proves it
+was built by this repository's release workflow from the tagged source. With
+the [GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify rust-mirror-gui-0.4.3-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
+```
+
+**The binaries are not code-signed**, so your system may warn the first time:
+
+- **Windows:** SmartScreen may say "Windows protected your PC". After checking
+  the SHA-256, choose **More info**, then **Run anyway**. Company policy may
+  block unsigned programs; ask IT to allow it, or install with Cargo below.
+- **macOS:** Gatekeeper may say the app "cannot be opened because the
+  developer cannot be verified". After checking the SHA-256, right-click the
+  program in Finder and choose **Open**, or run once in Terminal:
+  `xattr -d com.apple.quarantine ./rust-mirror-gui`.
+- **Linux:** no prompt. The binary is built on AlmaLinux 8 (glibc 2.28), and
+  each release is launch-tested on AlmaLinux 8 and Ubuntu 20.04. The window
+  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver, xkbcommon and a
+  system font (for symbols such as ✔).
+  Desktop distributions already have them. On a minimal or GPU-less machine,
+  install:
+
+  ```sh
+  # Debian/Ubuntu
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig
+  # RHEL, AlmaLinux, Rocky Linux
+  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig
+  ```
+
+### Install with Cargo
 
 Requires Rust **1.95** or newer.
 
@@ -34,15 +98,8 @@ cargo install rust-mirror-gui --locked
 rust-mirror-gui
 ```
 
-No separate rust-mirror installation is needed.
-
-**Linux:** building needs no extra packages. To run, the app needs a Vulkan or
-OpenGL driver and xkbcommon. Desktop distributions already have them. On a
-minimal or GPU-less Debian/Ubuntu machine, install:
-
-```sh
-sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
-```
+Building needs no extra packages on Linux. On Windows you need the Microsoft
+C++ build tools, as for any Rust install.
 
 **Company proxy or HTTPS inspection?** Open **Network settings** in the app
 and press **Test connection** first. See the tutorial's
@@ -105,11 +162,11 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
-- [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md)
+- [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md) and this repository's [release procedure](docs/RELEASING.md), including prebuilt binaries
 
 For development, run `cargo test --all-features`. The `fake-backend` feature
 builds a scripted test worker; it is never installed.

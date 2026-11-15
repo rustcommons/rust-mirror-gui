@@ -48,9 +48,21 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   serde_json (approved by the owner 2026-11-11 for the event protocol). Add
   nothing else without owner approval.
 - Publishing crates, binaries or releases requires explicit owner authorization.
-  CI build artifacts for owner trials are allowed. GitHub Releases carry notes
-  only; attach no binaries without separate authorization.
+  CI build artifacts for owner trials are allowed.
+- Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
+  attaching them from now on, replacing the earlier "notes only" rule. They
+  are produced only by `.github/workflows/release-binaries.yml`, which:
+  - builds from exactly the tagged commit with `--locked`;
+  - produces unsigned archives (no paid code signing), with `SHA256SUMS` and
+    GitHub artifact attestations;
+  - uploads only to the existing release for that tag;
+  - never replaces or deletes a published asset.
+
+  See [docs/RELEASING.md](docs/RELEASING.md).
   Do not publish placeholder crates to reserve names.
+- On 2026-11-15 the owner authorized publishing 0.4.3 (the wgpu limits fix)
+  to crates.io as the first release with prebuilt downloads, and decided not
+  to backfill downloads for 0.4.2.
 
 ## Documentation and requirements traceability
 
@@ -70,7 +82,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 
 - For a repository that ships versioned software, maintain a root `CHANGELOG.md` with an `Unreleased` section and dated, user-facing entries for shipped versions. Record noteworthy changes and their user impact as work is completed; do not substitute a roadmap, Git tag, CI log or validation report for a changelog.
 - Before publishing a version, commit its release notes under `docs/releases/vX.Y.Z.md` and link them, the changelog, and the maintained release policy. Explain changes, upgrade or dependency impact, validation and known limits; distinguish software changes from documentation-only releases.
-- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release; do not attach standalone binaries or other new distribution artifacts without authorization.
+- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release. Prebuilt binaries are authorized (2026-11-15) only through the release-binaries workflow (see docs/RELEASING.md); do not attach other new distribution artifacts without authorization.
 - Run the repository's release-documentation CI check before routine merges and release completion. For its first installation, review local checker/syntax evidence, register the workflow on the default branch, and require a green run before completing bootstrap or publishing notes. Verify the live GitHub Release and its tag, text and links after publication; a successful crate upload or tag alone is insufficient.
 - When backfilling history, reconstruct facts from existing tags, registry records and source/evidence. Preserve original source identities, distinguish original release dates from documentation backfill dates, and state unavailable historical validation. Never fabricate checks, move tags, republish versions, or imply that repository edits change immutable published archives.
 - For an organization profile, placeholder or project with no shipped version, record release verification as not applicable until its first authorized release. Do not invent versions, features, changelog history or GitHub Releases to satisfy this convention.

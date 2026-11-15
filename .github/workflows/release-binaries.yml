@@ -1,0 +1,364 @@
+name: Release binaries
+
+# Prebuilt, unsigned binaries for a published release (owner-authorized
+# 2026-11-15). Builds rust-mirror-gui from exactly the tagged commit, smoke-tests
+# each binary on its runner, packages <name>-<version>-<target>.<zip|tar.gz>
+# (same layout as rust-mirror), writes SHA256SUMS, attests every file with
+# GitHub artifact attestations (Sigstore) and uploads them to the existing
+# GitHub Release for the tag. It never replaces or deletes release assets and
+# refuses if the release does not match the tagged release notes.
+#
+# - push of a v* tag: build and publish (waits for the release, which the
+#   post-publication step creates right after the tag);
+# - workflow_dispatch: `tag` (an existing release tag) and `dry_run` (true by
+#   default: build and verify everything, upload nothing) for backfills;
+# - pull_request that changes the app, this workflow or packaging/: dry run of
+#   the pull request's own code, as the next release would build it (all
+#   builds, smoke and launch tests; nothing uploaded).
+# See docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v0.4.2
+        required: true
+      dry_run:
+        description: Build and verify only; upload nothing
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - src/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/release-binaries.yml
+      - packaging/**
+      - qualification/linux-launch.sh
+      - qualification/xwd2png.py
+permissions:
+  contents: read
+concurrency:
+  group: release-binaries-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+env:
+  NAME: rust-mirror-gui
+  REPO: ${{ github.repository }}
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      ref: ${{ steps.which.outputs.ref }}
+      version: ${{ steps.check.outputs.version }}
+      dry_run: ${{ steps.which.outputs.dry_run }}
+      pr: ${{ steps.which.outputs.pr }}
+    steps:
+      - id: which
+        name: Which tag, commit and mode
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pr=false
+          case "$EVENT" in
+            push) tag="$GITHUB_REF_NAME"; dry=false; ref="$GITHUB_SHA" ;;
+            workflow_dispatch) tag="$INPUT_TAG"; dry="$INPUT_DRY_RUN"; ref="$INPUT_TAG" ;;
+            # A pull request dry-runs its own head as the next release would
+            # build it; the tag comes from Cargo.toml and need not exist yet.
+            pull_request) tag=""; dry=true; ref="$PR_HEAD"; pr=true ;;
+          esac
+          if [ -n "$tag" ] && ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::not a release tag: $tag"; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry" >> "$GITHUB_OUTPUT"; echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          echo "tag '$tag', ref $ref, dry run: $dry"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.which.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        name: Tag, commit and version agree
+        env:
+          TAG: ${{ steps.which.outputs.tag }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG:-v$version}" >> "$GITHUB_OUTPUT"
+          echo "Cargo.toml version $version at $(git rev-parse HEAD)"
+          if [ -n "$TAG" ]; then
+            [ "${TAG#v}" = "$version" ] || { echo "::error::tag $TAG but Cargo.toml says $version"; exit 1; }
+            [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] || { echo "::error::checkout is not the tagged commit"; exit 1; }
+          fi
+      - name: The live release matches the tagged release notes
+        if: steps.which.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.which.outputs.tag }}
+        run: |
+          # The post-publication step creates the release right after the tag.
+          for i in $(seq 1 60); do gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 && break; sleep 30; done
+          python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
+      - name: Release guard, read-only (dry run of an existing release)
+        if: steps.which.outputs.dry_run == 'true' && steps.which.outputs.pr == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.which.outputs.tag }}
+        run: |
+          python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
+          echo "Assets already on $TAG:"; gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name'
+      - name: Committed release documentation (pull request dry run)
+        if: steps.which.outputs.pr == 'true'
+        run: python3 scripts/check-release-docs.py --repo "$REPO"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            # Build against an old glibc (2.28) so the binary also runs on
+            # RHEL/AlmaLinux 8, Ubuntu 20.04 and Debian 10 or newer.
+            # pinned by digest (almalinux:8, updated 2026-10-27)
+            container: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - name: Build tools (Linux container)
+        if: runner.os == 'Linux'
+        run: |
+          sed -n 1,2p /etc/os-release
+          dnf install -y git gcc binutils python39 tar gzip findutils which
+          alternatives --set python3 /usr/bin/python3.9
+          # the workspace belongs to the runner user, not the container's root
+          git config --global --add safe.directory '*'
+          ldd --version 2>&1 | sed -n 1p
+      - name: Release source (the tagged commit)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          path: src
+          persist-credentials: false
+      - name: Packaging tools (this workflow's commit)
+        uses: actions/checkout@v4
+        with:
+          path: tools
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build (release, --locked)
+        working-directory: src
+        shell: bash
+        run: |
+          # Windows: link the C runtime statically, so users need no Visual C++
+          # Redistributable. Only release binaries; CI and dev builds are unchanged.
+          if [ "${{ runner.os }}" = Windows ]; then export RUSTFLAGS='-C target-feature=+crt-static'; fi
+          echo "RUSTFLAGS=${RUSTFLAGS:-}"
+          cargo build --release --locked --bin "$NAME" --target "${{ matrix.target }}"
+          rustc --version
+      - name: Smoke test (built-in worker)
+        shell: bash
+        run: |
+          exe="src/target/${{ matrix.target }}/release/$NAME"; [ -f "$exe.exe" ] && exe="$exe.exe"
+          out=$("$exe" --worker --version < /dev/null)
+          echo "$out"
+          echo "$out" | grep -q '"protocol":1' || { echo "::error::worker did not report protocol 1"; exit 1; }
+          echo "$out" | grep -q '"tool_version"' || { echo "::error::worker did not report its rust-mirror version"; exit 1; }
+      - name: Smoke test (the window draws; PrintWindow)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
+          ./tools/qualification/capture-window.ps1 -Exe "src\target\${{ matrix.target }}\release\$env:NAME.exe" -Out shots\window.png
+      - name: DLL imports (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Record what the executable needs from the system, and refuse if it
+          # needs the Visual C++ runtime (it is linked statically, +crt-static).
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $deps = & $dumpbin.FullName /nologo /dependents "src\target\${{ matrix.target }}\release\$env:NAME.exe" | Where-Object { $_ -match '^\s+\S+\.dll$' } | ForEach-Object { $_.Trim() }
+          Write-Output "imports: $($deps -join ', ')"
+          if (-not $deps) { Write-Output "::error::no DLL imports found; dumpbin output not parsed"; exit 1 }
+          $crt = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)' }
+          if ($crt) { Write-Output "::error::the executable still needs the C runtime: $($crt -join ', ')"; exit 1 }
+          Write-Output "no Visual C++ / UCRT runtime DLLs imported"
+      - id: glibc
+        name: Minimum glibc (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          exe="src/target/${{ matrix.target }}/release/$NAME"
+          min=$(objdump -T "$exe" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -uV | tail -1)
+          echo "highest GLIBC_ symbol version (minimum glibc): $min"; echo "linked libraries:"; objdump -p "$exe" | awk '/NEEDED/ {print "  " $2}'
+          echo "min=$min" >> "$GITHUB_OUTPUT"
+          built=$(ldd --version 2>&1 | sed -n 1p | grep -oE '[0-9]+\.[0-9]+$')
+          echo "build runner glibc: $built"; echo "built=$built" >> "$GITHUB_OUTPUT"
+      - name: Architecture (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: file "src/target/${{ matrix.target }}/release/$NAME"; otool -l "src/target/${{ matrix.target }}/release/$NAME" | grep -m1 -A3 LC_BUILD_VERSION
+      - name: Package
+        shell: bash
+        run: |
+          exe="src/target/${{ matrix.target }}/release/$NAME"; [ -f "$exe.exe" ] && exe="$exe.exe"
+          python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE --name "$NAME" \
+            --version "${{ needs.prepare.outputs.version }}" --target "${{ matrix.target }}" --out dist \
+            --glibc "${{ steps.glibc.outputs.min }}" --glibc-built "${{ steps.glibc.outputs.built }}" \
+            --source "${{ needs.prepare.outputs.pr == 'true' && 'pull request (dry run, not a release)' || needs.prepare.outputs.tag }} at commit $(git -C src rev-parse HEAD)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: window-${{ matrix.target }}
+          path: shots
+
+  linux-launch:
+    # The Linux binary must start and draw its window on old distributions.
+    needs: build
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # pinned by digest: almalinux:8 (2026-10-27), ubuntu:20.04 (2025-04-09)
+        container: ['almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b', 'ubuntu:20.04@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Runtime and test packages
+        run: |
+          sed -n 1,2p /etc/os-release
+          if command -v dnf >/dev/null; then
+            # runtime: the packages README.txt lists for RHEL-family systems
+            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig \
+              xorg-x11-server-Xvfb xorg-x11-utils python3 tar gzip
+          else
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            # runtime: the packages README.txt lists for Debian/Ubuntu
+            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig \
+              xvfb x11-utils python3
+          fi
+          ldd --version 2>&1 | sed -n 1p
+      - name: Test scripts (this workflow's commit)
+        uses: actions/checkout@v4
+        with:
+          path: tools
+          sparse-checkout: qualification
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist
+      - name: Start the worker and the window (Xvfb)
+        shell: bash
+        run: |
+          tar -xzf dist/*.tar.gz
+          exe=$(ls -d rust-mirror-gui-*/)rust-mirror-gui
+          "$exe" --worker --version < /dev/null | tee worker.txt
+          grep -q '"protocol":1' worker.txt
+          ok=0; sh tools/qualification/linux-launch.sh "$exe" shots/default || ok=1
+          echo "--- with WGPU_BACKEND=gl (OpenGL), for comparison"
+          WGPU_BACKEND=gl sh tools/qualification/linux-launch.sh "$exe" shots/gl || echo "OpenGL launch failed too"
+          [ $ok -eq 0 ] || { echo "::error::the default launch failed on ${{ matrix.container }}"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-launch-${{ strategy.job-index }}
+          path: shots
+
+  checksums:
+    needs: [prepare, build, linux-launch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Expected files and SHA256SUMS
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cd dist
+          for t in x86_64-pc-windows-msvc.zip x86_64-unknown-linux-gnu.tar.gz aarch64-apple-darwin.tar.gz x86_64-apple-darwin.tar.gz; do
+            [ -f "$NAME-$VERSION-$t" ] || { echo "::error::missing $NAME-$VERSION-$t"; exit 1; }
+          done
+          [ "$(ls | wc -l)" -eq 4 ] || { echo "::error::unexpected files: $(ls)"; exit 1; }
+          # list the archives first: a redirect would create SHA256SUMS before ls runs
+          files=$(ls | LC_ALL=C sort)
+          sha256sum $files > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS
+          [ "$(wc -l < SHA256SUMS)" -eq 4 ] || { echo "::error::SHA256SUMS must list exactly the 4 archives"; exit 1; }
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, checksums]
+    if: needs.prepare.outputs.dry_run == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+      - name: Release still matches its notes; none of these assets exist yet
+        run: |
+          python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
+          existing=$(gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name')
+          for f in dist/*; do
+            if printf '%s\n' "$existing" | grep -qxF "$(basename "$f")"; then
+              echo "::error::$(basename "$f") already exists on $TAG; assets are never replaced"; exit 1
+            fi
+          done
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Verify the attestations before uploading
+        run: |
+          for f in dist/*; do gh attestation verify "$f" --repo "$REPO" > /dev/null && echo "attestation verified: $(basename "$f")"; done
+      - name: Upload to the release (never replaces)
+        run: gh release upload "$TAG" dist/* --repo "$REPO"
+      - name: Verify the live assets
+        run: |
+          mkdir check && cd check
+          gh release download "$TAG" --repo "$REPO" --pattern "$NAME-*" --pattern SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cmp SHA256SUMS ../dist/SHA256SUMS
+          for f in $NAME-*; do gh attestation verify "$f" --repo "$REPO" > /dev/null && echo "attestation verified: $f"; done
