@@ -23,6 +23,7 @@ fn gui() -> eframe::Result {
         ..Default::default()
     };
     prefer_direct3d12_on_windows(&mut options);
+    present_mode_override(&mut options);
     eframe::run_native(
         "rust-mirror GUI",
         options,
@@ -45,6 +46,22 @@ fn prefer_direct3d12_on_windows(options: &mut eframe::NativeOptions) {
     let mut setup = WgpuSetupCreateNew::without_display_handle();
     setup.instance_descriptor.backends = wgpu::Backends::DX12;
     options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(setup);
+}
+
+/// Diagnostics: `RUST_MIRROR_GUI_PRESENT_MODE` (`fifo`, `mailbox`,
+/// `immediate`, `auto_vsync` or `auto_no_vsync`) picks the swap-chain present
+/// mode, to compare rendering cost on machines that draw in software.
+fn present_mode_override(options: &mut eframe::NativeOptions) {
+    use eframe::egui_wgpu::wgpu::PresentMode;
+    let mode = match std::env::var("RUST_MIRROR_GUI_PRESENT_MODE").as_deref() {
+        Ok("fifo") => PresentMode::Fifo,
+        Ok("mailbox") => PresentMode::Mailbox,
+        Ok("immediate") => PresentMode::Immediate,
+        Ok("auto_vsync") => PresentMode::AutoVsync,
+        Ok("auto_no_vsync") => PresentMode::AutoNoVsync,
+        _ => return,
+    };
+    options.wgpu_options.surface.present_mode = mode;
 }
 
 #[cfg(not(windows))]

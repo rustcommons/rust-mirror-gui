@@ -156,6 +156,12 @@ function Wait-Text([string]$pattern, [int]$seconds) {
     } while ((Get-Date) -lt $deadline)
     $null
 }
+function Transferred {
+    $t = In 'texts'
+    $hit = @($t.names | Where-Object { $_ -match '^(\S+ \S+) over the network' }) | Select-Object -First 1
+    if ($hit -and $hit -match '^(\S+ \S+) over the network') { return $Matches[1] }
+    ''
+}
 function Files-Done {
     $t = In 'texts'
     foreach ($pattern in '(\d+) of (\d+) files done', '(\d+) of (\d+) crate files verified') {
@@ -167,8 +173,8 @@ function Files-Done {
 function Settings([string]$run, [string]$catalog = 'crates.toml') {
     @{ crate_catalog_path = "$Share\data\$catalog"; crate_output = "$Share\data\$run"; crate_previous = '' }
 }
-function Start-Sync([string]$exe, [string]$run, [string]$catalog = 'crates.toml') {
-    $l = In 'launch' @{ exe = $exe; settings = (Settings $run $catalog) }
+function Start-Sync([string]$exe, [string]$run, [string]$catalog = 'crates.toml', [hashtable]$env = @{}) {
+    $l = In 'launch' @{ exe = $exe; settings = (Settings $run $catalog); env = $env }
     [void](In 'invoke' @{ name = 'Crate preview & sync' })
     [void](In 'invoke' @{ name = 'Preview' })
     $p = Wait-Text '^Preview: \d+ crates' 600
@@ -207,8 +213,9 @@ Record 'idle-cpu-and-memory' ($idle.gui_cpu_pct -lt 3 -and $idle.gui_working_set
 # apart; the window itself redraws every 0.5 s while a job runs.
 $samples = @()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-for ($i = 0; $i -lt 4; $i++) { $samples += [ordered]@{ t_s = [math]::Round($sw.Elapsed.TotalSeconds, 1); files_done = (Files-Done) } }
-$increasing = ($samples | ForEach-Object { $_.files_done } | Where-Object { $_ -ge 0 } | Select-Object -Unique).Count -ge 3
+for ($i = 0; $i -lt 4; $i++) { $samples += [ordered]@{ t_s = [math]::Round($sw.Elapsed.TotalSeconds, 1); transferred = (Transferred); files_done = (Files-Done) } }
+# Bytes move continuously; file counts can pause on a large crate.
+$increasing = ($samples | ForEach-Object { $_.transferred } | Where-Object { $_ } | Select-Object -Unique).Count -ge 3
 [void](In 'capture' @{ name = '03-downloading' })
 Record 'live-status-updates' $increasing @{ samples = $samples; preview = $p }
 [void](In 'invoke' @{ name = 'Stop' })
@@ -279,6 +286,13 @@ if ($OldExe) {
     $new = In 'cpu' @{ seconds = 8 }
     [void](Wait-Text '^Verified crate mirror' 180)
     Record 'cpu-during-sync-vs-0.4.1' ($new.gui_cpu_pct -lt $old.gui_cpu_pct) @{ v0_4_1 = $old; this_build = $new }
+    # The same, with the swap chain presenting without vsync (diagnostic).
+    [void](In 'stop')
+    [void](Start-Sync "$Share\app\rust-mirror-gui.exe" 'run-novsync' 'crates-small.toml' @{ RUST_MIRROR_GUI_PRESENT_MODE = 'auto_no_vsync' })
+    Start-Sleep -Seconds 2
+    $nv = In 'cpu' @{ seconds = 8 }
+    [void](Wait-Text '^Verified crate mirror' 180)
+    Record 'cpu-during-sync-present-without-vsync (measurement)' $true @{ default_present_mode = $new; auto_no_vsync = $nv }
 }
 
 # 8. Start on the console, then take over through RDP.

@@ -356,7 +356,7 @@ impl FrameLog {
 }
 
 /// How often the window redraws while a job runs (status, progress, log).
-const JOB_REPAINT_INTERVAL: Duration = Duration::from_millis(500);
+const JOB_REPAINT_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Room left on the monitor for a taskbar and the window's title bar and
 /// borders (points). The work area itself is not available to the app.

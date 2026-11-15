@@ -80,6 +80,7 @@ try {
             $psi = New-Object System.Diagnostics.ProcessStartInfo $cmd.exe
             $psi.UseShellExecute = $false
             $psi.EnvironmentVariables['RUST_MIRROR_GUI_FRAME_LOG'] = "C:\rdpqual\out\frames-$($cmd.id).log"
+            if ($cmd.env) { foreach ($kv in $cmd.env.PSObject.Properties) { $psi.EnvironmentVariables[$kv.Name] = [string]$kv.Value } }
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $p = [System.Diagnostics.Process]::Start($psi)
             while ($p.MainWindowHandle -eq [IntPtr]::Zero -or $p.MainWindowTitle -notlike 'rust-mirror*') {
