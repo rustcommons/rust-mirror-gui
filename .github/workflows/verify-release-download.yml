@@ -1,0 +1,132 @@
+name: Verify release downloads
+
+# Read-only check of a published release's prebuilt downloads, as a user gets
+# them: download the live assets, check SHA256SUMS and every attestation, then
+# run the Windows and Linux archives (worker version, and the window: PrintWindow
+# on Windows, Xvfb in old-distribution containers on Linux). Nothing is built
+# and nothing is uploaded to the release. See docs/RELEASING.md.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag, for example v0.4.3
+        required: true
+  pull_request:
+    paths:
+      - .github/workflows/verify-release-download.yml
+permissions:
+  contents: read
+env:
+  NAME: rust-mirror-gui
+  REPO: ${{ github.repository }}
+  # A pull request checks the release this workflow was added for.
+  TAG: ${{ inputs.tag || 'v0.4.3' }}
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Download every asset; checksums and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir dl && cd dl
+          gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[]|"\(.name) \(.size)"' | tee ../assets.txt
+          [ "$(wc -l < ../assets.txt)" -eq 5 ] || { echo "::error::expected 4 archives and SHA256SUMS"; exit 1; }
+          gh release download "$TAG" --repo "$REPO"
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+          [ "$(wc -l < SHA256SUMS)" -eq 4 ] || { echo "::error::SHA256SUMS must list 4 archives"; exit 1; }
+          for f in *; do
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/release-binaries.yml" >/dev/null
+            echo "attestation verified: $f"
+          done
+          for f in *.tar.gz; do echo "== $f"; tar -tzf "$f"; done
+          echo "== zip"; python3 -c "import zipfile,glob; [print(n) for n in zipfile.ZipFile(glob.glob('*.zip')[0]).namelist()]"
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - name: Capture script (this workflow's commit)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: qualification
+          persist-credentials: false
+      - name: Download, check and run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          $zip = "$env:NAME-$version-x86_64-pc-windows-msvc.zip"
+          New-Item -ItemType Directory -Force dl, shots | Out-Null
+          gh release download $env:TAG --repo $env:REPO --pattern $zip --pattern SHA256SUMS --dir dl
+          $expected = (Get-Content dl\SHA256SUMS | Where-Object { $_ -like "*  $zip" }).Split(' ')[0]
+          $actual = (Get-FileHash "dl\$zip" -Algorithm SHA256).Hash.ToLower()
+          Write-Output "SHA-256 $actual (SHA256SUMS: $expected)"
+          if ($actual -ne $expected) { throw "checksum mismatch" }
+          Expand-Archive "dl\$zip" -DestinationPath run
+          $exe = (Resolve-Path "run\$env:NAME-$version-x86_64-pc-windows-msvc\$env:NAME.exe").Path
+          Get-ChildItem (Split-Path $exe) | Format-Table Name, Length
+          # A GUI-subsystem program: PowerShell's & neither waits nor captures
+          # its output, so run it with Start-Process and a redirected stdout.
+          New-Item -ItemType File -Force empty.txt | Out-Null
+          Start-Process -FilePath $exe -ArgumentList '--worker', '--version' -Wait -NoNewWindow -RedirectStandardOutput worker.txt -RedirectStandardInput empty.txt
+          $out = Get-Content worker.txt -Raw
+          $out
+          if (-not ($out -match '"protocol":1')) { throw "worker did not report protocol 1" }
+          ./qualification/capture-window.ps1 -Exe $exe -Out shots\window.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-window
+          path: shots
+
+  linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # the same pinned images as the release workflow's launch test
+        container: ['almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b', 'ubuntu:20.04@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214']
+    container: ${{ matrix.container }}
+    steps:
+      - name: Runtime packages (as documented) and test tools
+        run: |
+          sed -n 1,2p /etc/os-release
+          if command -v dnf >/dev/null; then
+            dnf install -y libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts fontconfig \
+              xorg-x11-server-Xvfb xorg-x11-utils python3 tar gzip curl
+          else
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core fontconfig \
+              xvfb x11-utils python3 curl ca-certificates
+          fi
+      - name: Launch scripts (this workflow's commit)
+        uses: actions/checkout@v4
+        with:
+          path: tools
+          sparse-checkout: qualification
+          persist-credentials: false
+      - name: Download from the public release URL, check and run
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          tgz="$NAME-$version-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/$REPO/releases/download/$TAG"
+          curl -fsSLO "$base/$tgz"; curl -fsSLO "$base/SHA256SUMS"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf "$tgz"
+          exe="$NAME-$version-x86_64-unknown-linux-gnu/$NAME"
+          cat "$NAME-$version-x86_64-unknown-linux-gnu/README.txt" | sed -n 1,12p
+          "$exe" --worker --version < /dev/null | tee worker.txt
+          grep -q '"protocol":1' worker.txt
+          sh tools/qualification/linux-launch.sh "$exe" shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-window-${{ strategy.job-index }}
+          path: shots

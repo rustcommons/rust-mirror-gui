@@ -8,6 +8,10 @@
   and ⚠ showed as empty boxes; they now always draw. fontconfig and DejaVu
   are no longer in the documented Linux runtime packages. Prebuilt archives
   include `LICENSE-DejaVu.txt`. The executable is about 0.8 MB larger.
+- Documentation: add the 0.4.3 [publication record](docs/evals/2026-11-15-v0.4.3-publication.md).
+- Testing: `verify-release-download.yml` checks a published release's
+  downloads as a user gets them (checksums, attestations, and running the
+  Windows and Linux archives); read-only.
 
 ## [0.4.3] - 2026-11-15
 
