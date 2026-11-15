@@ -101,12 +101,20 @@ asset names and archive layout are shared with rust-mirror.
     --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
   ```
 
+  The release workflow and `verify-release-download.yml` check more: the
+  signer and source digests must both be the release commit
+  (`--signer-digest`, `--source-digest`), and the attestation must come
+  from a GitHub-hosted runner (`--deny-self-hosted-runners`). So the same
+  workflow path at another commit does not pass. For the SBOM attestation
+  they also check that the attested SBOM is exactly the published file.
+
   0.4.3 and 0.5.0 were signed by `release-binaries.yml` itself (use that
   file name as the signer) and have no SBOM.
 - **Reproducibility:** `reproducible-build.yml` builds the same commit twice
   on fresh runners with `build-binaries-core.yml` and compares every executable
   and archive (weekly, and on PRs that change the build). Its results are
-  recorded as they are; see `docs/evals/`.
+  recorded as they are; see
+  [the reproducibility record](evals/2026-11-15-reproducible-builds.md).
 - **What a backfill's provenance names:** it records the workflow run's
   revision (main), not the tagged commit. Each archive's `README.txt`
   therefore states the tag and commit it was built from ("Built from"), and

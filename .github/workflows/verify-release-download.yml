@@ -42,18 +42,23 @@ jobs:
           # build-binaries.yml (SLSA Build L3), with an SBOM attestation too.
           if ls *.cdx.json >/dev/null 2>&1; then
             files=5; signer=build-binaries.yml
+            # Built from the tag push: source and signer are the tag's commit,
+            # on GitHub-hosted runners.
+            commit=$(gh api "repos/$REPO/commits/$TAG" -q .sha)
+            strict="--signer-digest $commit --source-digest $commit --deny-self-hosted-runners"
           else
-            files=4; signer=release-binaries.yml
+            # 0.4.3 and 0.5.0 keep the identity they were published with.
+            files=4; signer=release-binaries.yml; strict=""
           fi
           [ "$(wc -l < SHA256SUMS)" -eq $files ] || { echo "::error::SHA256SUMS must list $files files"; exit 1; }
           [ "$(wc -l < ../assets.txt)" -eq $((files + 1)) ] || { echo "::error::expected $files files and SHA256SUMS"; exit 1; }
           for f in *; do
-            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" >/dev/null
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict >/dev/null
             echo "provenance verified ($signer): $f"
           done
           if [ $files -eq 5 ]; then
             for f in *.zip *.tar.gz; do
-              gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" \
+              gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict \
                 --predicate-type https://cyclonedx.org/bom --format json > ../att.json
               (cd .. && python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dl/*.cdx.json)
               echo "SBOM attestation verified, same SBOM as the release's: $f"

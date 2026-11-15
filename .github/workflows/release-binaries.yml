@@ -153,6 +153,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.prepare.outputs.tag }}
+      # This run's commit: both the source and the signer workflow of the
+      # attestations must be exactly this commit (the tag's, on a tag push).
+      RUN_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -175,13 +178,13 @@ jobs:
         run: |
           # provenance for every file, signed by the reusable build workflow
           for f in dist/*; do
-            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" > /dev/null
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners > /dev/null
             echo "provenance verified: $(basename "$f")"
           done
           # the SBOM attestation for every archive, and it is exactly the SBOM
           # being published
           for f in dist/*.zip dist/*.tar.gz; do
-            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" \
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners \
               --predicate-type https://cyclonedx.org/bom --format json > att.json
             python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dist/*.cdx.json
             echo "SBOM attestation verified, same SBOM: $(basename "$f")"
@@ -195,6 +198,6 @@ jobs:
           sha256sum -c SHA256SUMS
           cmp SHA256SUMS ../dist/SHA256SUMS
           for f in $NAME-* SHA256SUMS; do
-            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" > /dev/null
+            gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners > /dev/null
             echo "provenance verified: $f"
           done

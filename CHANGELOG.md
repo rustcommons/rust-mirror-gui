@@ -17,7 +17,13 @@
     (SLSA Build L3).
   - Each release gets a CycloneDX SBOM (`rust-mirror-gui-X.Y.Z.cdx.json`),
     listed in `SHA256SUMS` and attested for every archive.
-  - `reproducible-build.yml` builds twice and compares the results.
+  - `reproducible-build.yml` builds twice and compares the results. With
+    `/Brepro` on the Windows link, all four targets' executables and
+    archives were bit-identical
+    ([record](docs/evals/2026-11-15-reproducible-builds.md)).
+  - The release and download checks verify that attestations were signed by
+    the release commit's `build-binaries.yml` on GitHub-hosted runners, and
+    that the attested SBOM is exactly the published one.
 - **Trusted Publishing:** `trusted-publishing.yml` is ready for crates.io
   Trusted Publishing; the current publishing process is unchanged until
   the owner enables it.
