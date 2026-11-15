@@ -601,13 +601,11 @@ fn spawn_stdout_reader(
                         continue;
                     }
                     let event = Event::parse(&text);
-                    // Wake the window at once only for events that change what
-                    // it shows in a way that should not wait for its regular
-                    // redraw (a new stage, a retry wait, the final result).
-                    // Progress lines arrive hundreds of times a second and are
-                    // picked up by the regular redraw instead.
-                    let urgent =
-                        matches!(event, Event::Stage(_) | Event::Retry(_) | Event::Result(_));
+                    // Wake the window at once only for events that change the
+                    // job's state (a retry wait, the final result: finished or
+                    // failed). Progress and stage lines arrive many times a
+                    // second and are picked up by the regular redraw instead.
+                    let urgent = matches!(event, Event::Retry(_) | Event::Result(_));
                     if tx.send(Msg::Event(event)).is_err() {
                         return;
                     }

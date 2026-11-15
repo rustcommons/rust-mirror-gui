@@ -169,8 +169,8 @@ impl App {
         // window redraws on a fixed timer (`JOB_REPAINT_INTERVAL`) and reads
         // new output then. Redrawing on every line kept a software renderer
         // (Remote Desktop, no GPU) busy on several cores during a crate sync.
-        // Events that change the state (stage, retry, result, end of output)
-        // still wake the window at once.
+        // Events that change the state (retry, result, end of output) still
+        // wake the window at once.
         let wake = ctx.clone();
         match Job::start(spec, move || wake.request_repaint()) {
             Ok(job) => {
