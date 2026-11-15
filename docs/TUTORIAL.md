@@ -54,7 +54,15 @@ look slightly different.
 
 ## 1. Install and launch
 
-You need Rust 1.95 or newer.
+**Easiest:** download the archive for your system from the
+[latest GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases/latest)
+(from 0.4.2 on), unpack it and run `rust-mirror-gui`. The binaries are not
+code-signed: the README's
+[install section](../README.md#download-a-prebuilt-binary) shows how to check
+the download and what to do when Windows SmartScreen or macOS Gatekeeper
+warns.
+
+**Or build it with Cargo** (Rust 1.95 or newer):
 
 ```sh
 cargo install rust-mirror-gui --locked
@@ -63,8 +71,8 @@ rust-mirror-gui
 
 - The rust-mirror engine is built into the app. You don't install rust-mirror
   separately.
-- **Windows:** you also need the Microsoft C++ build tools, as for any Rust
-  install.
+- **Windows (Cargo only):** you also need the Microsoft C++ build tools, as
+  for any Rust install.
 - **Linux:** building needs no extra packages. To run, the app needs a graphics
   driver (Vulkan or OpenGL) and xkbcommon. Desktop Linux already has them. On a
   minimal or GPU-less Debian/Ubuntu machine, install:
@@ -78,7 +86,8 @@ rust-mirror-gui
   `~/.config/rust-mirror-gui/settings.json` on Linux.
 
 When the app starts, the top bar should say
-**"✔ rust-mirror 0.4.0 built in · event protocol 1"**. If it shows a red message,
+**"✔ rust-mirror 0.5.1 built in · event protocol 1"** (the version of the
+built-in engine; 0.4.2 has 0.5.1). If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes

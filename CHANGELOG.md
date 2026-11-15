@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- **Prebuilt binaries** on GitHub Releases (owner-authorized 2026-11-15):
+  - Windows x86-64 (`.zip`), Linux x86-64 (`.tar.gz`), and macOS Apple
+    silicon and Intel (`.tar.gz`);
+  - built from the tagged commit by `release-binaries.yml`, with
+    `SHA256SUMS` and GitHub build-provenance attestations;
+  - not code-signed (the README explains the SmartScreen and Gatekeeper
+    prompts).
+
+  0.4.2 is backfilled. The README now lists "Download a prebuilt binary"
+  first, and [docs/RELEASING.md](docs/RELEASING.md) describes the release
+  procedure.
 - Documentation: add the 0.3.0 [publication record](docs/evals/2026-11-13-v0.3.0-publication.md).
 - Documentation: add the 0.4.0 [publication record](docs/evals/2026-11-13-v0.4.0-publication.md), the
   Windows renderer finding in the [0.4.0 validation record](docs/evals/2026-11-13-v0.4.0-validation.md),

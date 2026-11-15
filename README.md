@@ -27,6 +27,60 @@ macOS runtime and screen readers are not yet verified; see
 
 ## Install
 
+### Download a prebuilt binary
+
+Each [GitHub Release](https://github.com/rustcommons/rust-mirror-gui/releases)
+from 0.4.2 on has ready-to-run archives:
+
+| System | File |
+| --- | --- |
+| Windows x86-64 | `rust-mirror-gui-<version>-x86_64-pc-windows-msvc.zip` |
+| Linux x86-64 (glibc 2.35 or newer) | `rust-mirror-gui-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple silicon | `rust-mirror-gui-<version>-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `rust-mirror-gui-<version>-x86_64-apple-darwin.tar.gz` |
+
+Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
+the folder. No separate rust-mirror installation is needed.
+
+**Check the download** against `SHA256SUMS` on the same release page:
+
+```powershell
+# Windows (PowerShell): compare with the line for this file in SHA256SUMS
+Get-FileHash .\rust-mirror-gui-0.4.2-x86_64-pc-windows-msvc.zip
+```
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS         # Linux
+shasum -a 256 -c --ignore-missing SHA256SUMS     # macOS
+```
+
+Every archive also has a signed build-provenance attestation, which proves it
+was built by this repository's release workflow from the tagged source. With
+the [GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify rust-mirror-gui-0.4.2-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
+```
+
+**The binaries are not code-signed**, so your system may warn the first time:
+
+- **Windows:** SmartScreen may say "Windows protected your PC". After checking
+  the SHA-256, choose **More info**, then **Run anyway**. Company policy may
+  block unsigned programs; ask IT to allow it, or install with Cargo below.
+- **macOS:** Gatekeeper may say the app "cannot be opened because the
+  developer cannot be verified". After checking the SHA-256, right-click the
+  program in Finder and choose **Open**, or run once in Terminal:
+  `xattr -d com.apple.quarantine ./rust-mirror-gui`.
+- **Linux:** no prompt. The window needs a Vulkan or OpenGL driver and
+  xkbcommon. Desktop distributions already have them. On a minimal or
+  GPU-less Debian/Ubuntu machine, install:
+
+  ```sh
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
+  ```
+
+### Install with Cargo
+
 Requires Rust **1.95** or newer.
 
 ```sh
@@ -34,15 +88,8 @@ cargo install rust-mirror-gui --locked
 rust-mirror-gui
 ```
 
-No separate rust-mirror installation is needed.
-
-**Linux:** building needs no extra packages. To run, the app needs a Vulkan or
-OpenGL driver and xkbcommon. Desktop distributions already have them. On a
-minimal or GPU-less Debian/Ubuntu machine, install:
-
-```sh
-sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1
-```
+Building needs no extra packages on Linux. On Windows you need the Microsoft
+C++ build tools, as for any Rust install.
 
 **Company proxy or HTTPS inspection?** Open **Network settings** in the app
 and press **Test connection** first. See the tutorial's
@@ -109,7 +156,7 @@ writes to a server: use only a fresh, empty test repository.
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
-- [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md)
+- [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md) and this repository's [release procedure](docs/RELEASING.md), including prebuilt binaries
 
 For development, run `cargo test --all-features`. The `fake-backend` feature
 builds a scripted test worker; it is never installed.
