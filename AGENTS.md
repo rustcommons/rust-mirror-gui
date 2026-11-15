@@ -76,8 +76,16 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   ("protect-release-tags").
 - **Actions are pinned to full commit SHAs**, with the version as a trailing
   comment (`uses: owner/action@<sha> # vX.Y.Z`). Dependabot
-  (`.github/dependabot.yml`) proposes updates weekly. Never add an unpinned
-  `uses:`.
+  (`.github/dependabot.yml`) proposes version updates monthly (at most 2
+  open PRs per ecosystem; security updates come at once). Never add an
+  unpinned `uses:`.
+- **Runner budget** (the org shares 20 concurrent jobs): every PR workflow
+  has a per-PR concurrency group that cancels the PR's older runs.
+  Dependabot PRs run only the core checks: fmt, clippy, tests, cargo-deny,
+  zizmor, `lf-only`, release docs and CodeQL. Expensive jobs (release dry
+  runs, reproducibility, qualifications, glibc experiments, download
+  checks) carry `if: github.actor != 'dependabot[bot]'`. Keep both when
+  adding a workflow.
 - **Least privilege:** every workflow's top-level `permissions` is read-only;
   a job that needs more asks for it itself (`contents: write` only to upload
   release assets; `id-token`/`attestations: write` only where it signs or

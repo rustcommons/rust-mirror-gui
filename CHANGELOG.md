@@ -3,9 +3,11 @@
 ## [Unreleased]
 
 - **Security baseline** (owner-approved 2026-11-15):
-  - Dependabot proposes weekly updates for Cargo and GitHub Actions (minor
-    and patch grouped; 7-day cooldown). Every action is pinned to a full
-    commit SHA.
+  - Dependabot proposes monthly version updates for Cargo and GitHub
+    Actions (minor and patch grouped; 7-day cooldown; at most 2 open PRs per
+    ecosystem); security updates come at once. Its PRs run only the core
+    checks, and every PR workflow cancels a PR's superseded runs. Every
+    action is pinned to a full commit SHA.
   - CI now runs zizmor (workflow security lint) and cargo-deny (RustSec
     advisories, a license allowlist, crates.io-only sources; see
     `deny.toml`). Four unmaintained crates that come only through eframe,

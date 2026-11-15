@@ -12,6 +12,11 @@ on:
         default: false
 permissions:
   contents: read
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   release-documentation:
     runs-on: ubuntu-24.04

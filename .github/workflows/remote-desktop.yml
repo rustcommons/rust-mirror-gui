@@ -13,8 +13,15 @@ on:
       - qualification/rdp/**
 permissions:
   contents: read
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   rdp:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
     strategy:
       fail-fast: false
       matrix:

@@ -41,14 +41,17 @@ on:
       - qualification/xwd2png.py
 permissions:
   contents: read
+# One run per tag (never cancelled); one per PR (a new push cancels the older run).
 concurrency:
-  group: release-binaries-${{ inputs.tag || github.ref }}
-  cancel-in-progress: false
+  group: release-binaries-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   NAME: rust-mirror-gui
   REPO: ${{ github.repository }}
 jobs:
   prepare:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.check.outputs.tag }}

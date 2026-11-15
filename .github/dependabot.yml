@@ -1,27 +1,30 @@
-# Weekly dependency updates (org security baseline, 2026-11-15).
+# Monthly version updates (org security baseline, amended 2026-11-15: weekly
+# updates starved the shared runner pool). Security updates are not affected
+# by this schedule: Dependabot opens them as soon as an advisory appears.
 # Minor and patch updates are grouped into one PR per ecosystem; majors come
-# one by one. Every PR still needs CI green and review before it merges.
+# one by one; at most 2 open PRs per ecosystem. Dependabot PRs run only the
+# core CI checks. Every PR still needs CI green and review before it merges.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     # wait a week after a release before proposing it
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     groups:
       cargo-minor-and-patch:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     # wait a week after a release before proposing it
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     groups:
       actions-minor-and-patch:
         update-types: [minor, patch]

@@ -22,9 +22,15 @@ permissions:
 env:
   NAME: rust-mirror-gui
   CARGO_LIBC_COMMIT: e68ca7bf3a8ffd973c8576acc48abd0fbcc66d25
+# One run per PR: a new push cancels the PR's older runs (pushes to main and
+# tags are never cancelled).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   baseline:
-    if: github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments'
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]' && (github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments')
     # Exactly how release-binaries.yml builds the published Linux download.
     runs-on: ubuntu-22.04
     container: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
@@ -49,7 +55,8 @@ jobs:
           path: bin/
 
   cargo-libc:
-    if: github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments'
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]' && (github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
