@@ -131,7 +131,9 @@ jobs:
           IMAGE: ${{ matrix.image }}
         run: |
           mkdir -p work/bin
-          cp dl/bin/rust-mirror-gui-* work/bin/ && rm -f work/bin/*.glibc
+          # artifacts unpack with or without their bin/ folder
+          find dl -type f -name 'rust-mirror-gui-*' ! -name '*.glibc' -exec cp {} work/bin/ \;
+          [ -n "$(ls work/bin)" ] || { echo "::error::no binaries downloaded"; exit 1; }
           cp -r qualification work/
           ls -l work/bin
           docker pull --platform linux/amd64 "$IMAGE" || echo "pull failed"
