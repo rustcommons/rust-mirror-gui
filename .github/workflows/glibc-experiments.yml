@@ -77,7 +77,10 @@ jobs:
           mkdir -p bin logs
           for t in 2.28 2.17; do
             out="bin/rust-mirror-gui-libc$t"
-            if (cd app && CARGO_TARGET_DIR="$RUNNER_TEMP/t$t" cargo libc build --target "x86_64-unknown-linux-gnu.$t" --cc /usr/bin/clang-18 --artifact "$GITHUB_WORKSPACE/$out" -- --release --locked) > "logs/build-$t.log" 2>&1; then
+            # --artifact names the executable cargo-libc checks after the build
+            built="$RUNNER_TEMP/t$t/x86_64-unknown-linux-gnu/release/$NAME"
+            if (cd app && CARGO_TARGET_DIR="$RUNNER_TEMP/t$t" cargo libc build --target "x86_64-unknown-linux-gnu.$t" --cc /usr/bin/clang-18 --artifact "$built" -- --release --locked) > "logs/build-$t.log" 2>&1; then
+              cp "$built" "$out"
               cargo libc inspect "$out" --max-glibc "$t" > "logs/inspect-$t.log" 2>&1; echo "inspect exit $?" >> "logs/inspect-$t.log"
               objdump -T "$out" | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1 > "$out.glibc"
               echo "glibc $t: built, highest symbol $(cat "$out.glibc")"
