@@ -290,7 +290,10 @@ jobs:
             [ -f "$NAME-$VERSION-$t" ] || { echo "::error::missing $NAME-$VERSION-$t"; exit 1; }
           done
           [ "$(ls | wc -l)" -eq 4 ] || { echo "::error::unexpected files: $(ls)"; exit 1; }
-          ls | sort | xargs sha256sum > SHA256SUMS
+          # list the archives first: a redirect would create SHA256SUMS before ls runs
+          files=$(ls | LC_ALL=C sort)
+          sha256sum $files > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS
+          [ "$(wc -l < SHA256SUMS)" -eq 4 ] || { echo "::error::SHA256SUMS must list exactly the 4 archives"; exit 1; }
           cat SHA256SUMS
           sha256sum -c SHA256SUMS
       - uses: actions/upload-artifact@v4
