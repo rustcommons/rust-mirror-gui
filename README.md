@@ -75,15 +75,16 @@ gh attestation verify rust-mirror-gui-0.4.2-x86_64-unknown-linux-gnu.tar.gz --re
   `xattr -d com.apple.quarantine ./rust-mirror-gui`.
 - **Linux:** no prompt. The binary is built on AlmaLinux 8 (glibc 2.28), and
   each release is launch-tested on AlmaLinux 8 and Ubuntu 20.04. The window
-  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver and xkbcommon.
+  needs X11 or Wayland, a Vulkan or OpenGL (EGL) driver, xkbcommon and a
+  system font (for symbols such as ✔).
   Desktop distributions already have them. On a minimal or GPU-less machine,
   install:
 
   ```sh
   # Debian/Ubuntu
-  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6
+  sudo apt install libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri libxcursor1 libxrandr2 libxi6 fonts-dejavu-core
   # RHEL, AlmaLinux, Rocky Linux
-  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi
+  sudo dnf install libxkbcommon-x11 vulkan-loader mesa-vulkan-drivers mesa-libEGL mesa-dri-drivers libXcursor libXrandr libXi dejavu-sans-fonts
   ```
 
 ### Install with Cargo
