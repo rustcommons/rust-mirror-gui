@@ -2905,9 +2905,9 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e91420909f7441f35399e3a50a664d7a347e1b45672d3866d6a350e54f6ac57"
+checksum = "29b547bb8b762beb0f403dda6f8f628ab7706a18ccd52bb0f01711382a0bda39"
 dependencies = [
  "hex",
  "semver",

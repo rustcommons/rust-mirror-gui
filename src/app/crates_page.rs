@@ -13,8 +13,9 @@ use std::time::Duration;
 
 /// Preview older than this gets a stale warning.
 const STALE_AFTER: Duration = Duration::from_secs(24 * 3600);
-/// Rows rendered at once in the preview table (filter to narrow).
-const MAX_ROWS: usize = 400;
+/// Rows listed in the preview table (only the visible ones are laid out;
+/// the filter narrows the list).
+const MAX_ROWS: usize = 10_000;
 
 #[derive(Default)]
 pub(super) struct CrateState {
@@ -716,6 +717,32 @@ impl App {
                     human_bytes(u(&f, "expected_bytes").unwrap_or(0))
                 ))
                 .color(RED),
+            );
+        }
+        // rust-mirror 0.5.1: index entries for a crate that differ only in
+        // build metadata. None of them was selected; they are served as is.
+        for w in plan["index_warnings"].as_array().into_iter().flatten() {
+            let versions: Vec<String> = w["versions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|v| {
+                    let yanked = if v["yanked"] == json!(true) {
+                        ", yanked"
+                    } else {
+                        ""
+                    };
+                    format!("{}{yanked}", s(v, "version"))
+                })
+                .collect();
+            ui.label(
+                RichText::new(format!(
+                    "⚠ crates.io lists {} {} more than once, differing only in build metadata ({}). None of these was selected; the mirror serves the index entries unchanged.",
+                    s(w, "name"),
+                    s(w, "normalized_version"),
+                    versions.join("; ")
+                ))
+                .color(AMBER),
             );
         }
         for w in list(&plan["warnings"]) {
