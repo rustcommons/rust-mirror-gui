@@ -102,8 +102,11 @@ jobs:
         shell: bash
         run: |
           # Windows: link the C runtime statically, so users need no Visual C++
-          # Redistributable. Only release binaries; CI and dev builds are unchanged.
-          if [ "${{ runner.os }}" = Windows ]; then export RUSTFLAGS='-C target-feature=+crt-static'; fi
+          # Redistributable; and /Brepro, so the linker writes content hashes
+          # instead of the build time into the PE header, debug directory and
+          # PDB id (otherwise two identical builds differ in 24 bytes).
+          # Only release binaries; CI and dev builds are unchanged.
+          if [ "${{ runner.os }}" = Windows ]; then export RUSTFLAGS='-C target-feature=+crt-static -C link-arg=/Brepro'; fi
           echo "RUSTFLAGS=${RUSTFLAGS:-}"
           cargo build --release --locked --bin "$NAME" --target "${{ matrix.target }}"
           rustc --version

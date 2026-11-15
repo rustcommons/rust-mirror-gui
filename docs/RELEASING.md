@@ -28,7 +28,7 @@ publishes from the owner's machine.
    waits for the release from step 3, has the reusable
    [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build and
    sign them, then attaches the binaries described below. The same tag push
-   also starts [`publish-crate.yml`](../.github/workflows/publish-crate.yml).
+   also starts [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml).
    While the owner publishes by hand (step 2), it only checks that the
    published crate is the tag's source. Check its run, and record it in the publication record.
 5. **Downloads, as a user gets them:** run
@@ -62,8 +62,10 @@ asset names and archive layout are shared with rust-mirror.
 - **How they are built:**
   - Rust 1.95.0 (the MSRV and CI toolchain);
   - `cargo build --release --locked`;
-  - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static'` in the
-    release job only (CI and development builds are unchanged). The C runtime
+  - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static -C
+    link-arg=/Brepro'` in the release job only (CI and development builds
+    are unchanged). `/Brepro` makes the linker write content hashes instead
+    of timestamps, so two builds can be identical. The C runtime
     is linked statically, so users need no Visual C++ Redistributable. The
     job lists the executable's DLL imports and fails if any `vcruntime`,
     `msvcp`, `ucrtbase` or `api-ms-win-crt-*` DLL remains;

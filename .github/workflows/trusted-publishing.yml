@@ -11,7 +11,7 @@ name: Publish crate (Trusted Publishing)
 #
 # Owner settings on crates.io (rust-mirror-gui → Settings → Trusted
 # Publishing → GitHub): repository owner rustcommons, repository name
-# rust-mirror-gui, workflow filename publish-crate.yml, environment crates-io.
+# rust-mirror-gui, workflow filename trusted-publishing.yml, environment crates-io.
 on:
   push:
     tags: ['v*']

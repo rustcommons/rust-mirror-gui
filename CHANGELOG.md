@@ -17,7 +17,7 @@
   - Each release gets a CycloneDX SBOM (`rust-mirror-gui-X.Y.Z.cdx.json`),
     listed in `SHA256SUMS` and attested for every archive.
   - `reproducible-build.yml` builds twice and compares the results.
-- **Trusted Publishing:** `publish-crate.yml` is ready for crates.io
+- **Trusted Publishing:** `trusted-publishing.yml` is ready for crates.io
   Trusted Publishing; the current publishing process is unchanged until
   the owner enables it.
 

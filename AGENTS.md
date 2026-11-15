@@ -93,7 +93,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
   compares two independent builds weekly.
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
-- **Trusted Publishing:** `publish-crate.yml` (environment `crates-io`) is
+- **Trusted Publishing:** `trusted-publishing.yml` (environment `crates-io`) is
   ready, but not the release process until the owner enables it on
   crates.io. Until then, publish as `docs/RELEASING.md` says.
 - **Security reports:** the org-wide `SECURITY.md` (in the `.github`
