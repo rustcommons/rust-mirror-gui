@@ -25,7 +25,12 @@ sleep 5   # let it draw a few frames
 kill -0 $app || { echo "the app exited after mapping its window"; cat "$out/app.log"; kill $xvfb; exit 1; }
 xwininfo -root -tree | grep '"rust-mirror GUI"' | tee "$out/window.txt"
 status=0
-python3 "$here/xwd2png.py" "$out/fb/Xvfb_screen0" "$out/screen.png" --min-colors 16 || status=1
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$here/xwd2png.py" "$out/fb/Xvfb_screen0" "$out/screen.png" --min-colors 16 || status=1
+else
+  # Old distributions without Python 3: keep the dump for the host to check.
+  cp "$out/fb/Xvfb_screen0" "$out/screen.xwd"
+fi
 kill $app; wait $app 2>/dev/null || true
 kill $xvfb; wait $xvfb 2>/dev/null || true
 rm -rf "$out/fb"
