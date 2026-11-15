@@ -27,6 +27,11 @@ publishes from the owner's machine.
    [`release-binaries.yml`](../.github/workflows/release-binaries.yml). It
    waits for the release from step 3, then attaches the binaries described
    below. Check its run, and record it in the publication record.
+5. **Downloads, as a user gets them:** run
+   [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
+   (Actions → Verify release downloads, `tag`). It downloads the live assets,
+   checks `SHA256SUMS` and the attestations, and runs the Windows and Linux
+   archives. It is read-only. Record its run too.
 
 ## Prebuilt binaries
 
