@@ -140,6 +140,10 @@ jobs:
         working-directory: src
         shell: bash
         run: |
+          # Windows: link the C runtime statically, so users need no Visual C++
+          # Redistributable. Only release binaries; CI and dev builds are unchanged.
+          if [ "${{ runner.os }}" = Windows ]; then export RUSTFLAGS='-C target-feature=+crt-static'; fi
+          echo "RUSTFLAGS=${RUSTFLAGS:-}"
           cargo build --release --locked --bin "$NAME" --target "${{ matrix.target }}"
           rustc --version
       - name: Smoke test (built-in worker)
@@ -160,13 +164,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Record what the executable needs from the system. A standard MSVC
-          # build imports VCRUNTIME140.dll (Microsoft Visual C++ Redistributable).
+          # Record what the executable needs from the system, and refuse if it
+          # needs the Visual C++ runtime (it is linked statically, +crt-static).
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
           $deps = & $dumpbin.FullName /nologo /dependents "src\target\${{ matrix.target }}\release\$env:NAME.exe" | Where-Object { $_ -match '^\s+\S+\.dll$' } | ForEach-Object { $_.Trim() }
           Write-Output "imports: $($deps -join ', ')"
-          if (-not ($deps -contains 'VCRUNTIME140.dll')) { Write-Output "note: VCRUNTIME140.dll is not imported; the README's redistributable note may be unnecessary" }
+          if (-not $deps) { Write-Output "::error::no DLL imports found; dumpbin output not parsed"; exit 1 }
+          $crt = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)' }
+          if ($crt) { Write-Output "::error::the executable still needs the C runtime: $($crt -join ', ')"; exit 1 }
+          Write-Output "no Visual C++ / UCRT runtime DLLs imported"
       - id: glibc
         name: Minimum glibc (Linux)
         if: runner.os == 'Linux'

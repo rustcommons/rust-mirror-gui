@@ -49,6 +49,11 @@ asset names and archive layout are shared with rust-mirror.
 - **How they are built:**
   - Rust 1.95.0 (the MSRV and CI toolchain);
   - `cargo build --release --locked`;
+  - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static'` in the
+    release job only (CI and development builds are unchanged). The C runtime
+    is linked statically, so users need no Visual C++ Redistributable. The
+    job lists the executable's DLL imports and fails if any `vcruntime`,
+    `msvcp`, `ucrtbase` or `api-ms-win-crt-*` DLL remains;
   - from exactly the tagged commit; the workflow refuses if the tag, the
     commit and `Cargo.toml` disagree.
 - **Smoke tests before upload:**

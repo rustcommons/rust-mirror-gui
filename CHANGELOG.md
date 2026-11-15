@@ -3,7 +3,8 @@
 ## [Unreleased]
 
 - **Prebuilt binaries** on GitHub Releases (owner-authorized 2026-11-15):
-  - Windows x86-64 (`.zip`), Linux x86-64 (`.tar.gz`), and macOS Apple
+  - Windows x86-64 (`.zip`, C runtime linked statically, so no Visual C++
+    Redistributable is needed), Linux x86-64 (`.tar.gz`), and macOS Apple
     silicon and Intel (`.tar.gz`);
   - built from the tagged commit by `release-binaries.yml`, with
     `SHA256SUMS` and GitHub build-provenance attestations;
