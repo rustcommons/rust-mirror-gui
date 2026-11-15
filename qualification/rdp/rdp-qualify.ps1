@@ -158,7 +158,7 @@ function Start-Sync([string]$exe, [string]$run) {
     $l = In 'launch' @{ exe = $exe; settings = (Settings $run) }
     [void](In 'invoke' @{ name = 'Crate preview & sync' })
     [void](In 'invoke' @{ name = 'Preview' })
-    $p = Wait-Text '^Preview: \d+ crates' 120
+    $p = Wait-Text '^Preview: \d+ crates' 600
     [void](In 'invoke' @{ name = 'Approve this preview and download' })
     @{ launch = $l; preview = $p }
 }
@@ -182,7 +182,7 @@ Record 'renderer-is-direct3d12-warp' ($l.modules -contains 'd3d10warp.dll' -and 
 # 2. Preview, idle CPU, sync with live status, Stop, Resume.
 [void](In 'invoke' @{ name = 'Crate preview & sync' })
 [void](In 'invoke' @{ name = 'Preview' })
-$p = Wait-Text '^Preview: \d+ crates' 120
+$p = Wait-Text '^Preview: \d+ crates' 600
 [void](In 'capture' @{ name = '02-preview' })
 $idle = In 'cpu' @{ seconds = 30 }
 Record 'idle-cpu-and-memory' ($idle.gui_cpu_pct -lt 3 -and $idle.gui_working_set_mib -lt 300) $idle

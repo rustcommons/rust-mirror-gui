@@ -94,6 +94,8 @@ try {
                 Start-Sleep -Milliseconds 200
             } while ($sw.Elapsed.TotalSeconds -lt 60)
             $result.drawn_s = [math]::Round($sw.Elapsed.TotalSeconds, 2)
+            $result.exe_sha256 = (Get-FileHash $cmd.exe).Hash
+            $result.frame_log_exists = Test-Path "C:\rdpqual\out\frames-$($cmd.id).log"
             $result.capture = $cap
             Start-Sleep -Seconds 2
             $p.Refresh()
