@@ -48,6 +48,9 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   serde_json (approved by the owner 2026-11-11 for the event protocol). Add
   nothing else without owner approval.
 - Publishing crates, binaries or releases requires explicit owner authorization.
+  The owner authorized 0.5.1 on 2026-11-16 (the security baseline on main,
+  SBOM and SLSA L3 release builds, rust-mirror 0.5.4), published through
+  Trusted Publishing.
   CI build artifacts for owner trials are allowed.
 - Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
   attaching them from now on, replacing the earlier "notes only" rule. They
@@ -102,9 +105,11 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   runs it and then signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
   compares two independent builds weekly.
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
-- **Trusted Publishing:** `trusted-publishing.yml` (environment `crates-io`) is
-  ready, but not the release process until the owner enables it on
-  crates.io. Until then, publish as `docs/RELEASING.md` says.
+- **Trusted Publishing** is the only way to publish to crates.io (since
+  2026-11-16; no API token exists any more). A `v*` tag push runs
+  `trusted-publishing.yml`, which waits for the owner's approval of the
+  `crates-io` environment. Never ask anyone to publish from a machine; see
+  `docs/RELEASING.md`.
 - **Security reports:** the org-wide `SECURITY.md` (in the `.github`
   repository) applies; this repository has none of its own.
 

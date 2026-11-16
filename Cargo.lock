@@ -2905,9 +2905,9 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror"
-version = "0.5.1"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29b547bb8b762beb0f403dda6f8f628ab7706a18ccd52bb0f01711382a0bda39"
+checksum = "a11f6b58f2004b6df41ea1c33720bed7762c9daff815ce2eb3c3195fbbe908f2"
 dependencies = [
  "hex",
  "semver",
@@ -2923,7 +2923,7 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror-gui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "eframe",
  "rust-mirror",
@@ -3013,9 +3013,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.16"
+version = "0.103.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+checksum = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -3394,7 +3394,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.6",
  "windows-sys 0.61.2",
