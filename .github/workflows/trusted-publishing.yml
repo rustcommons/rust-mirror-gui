@@ -3,11 +3,11 @@ name: Publish crate (Trusted Publishing)
 # Publishes rust-mirror-gui to crates.io from a v* tag with a short-lived
 # token from crates.io Trusted Publishing (OIDC): no stored API token.
 #
-# Not yet the release process. Until the owner enables Trusted Publishing on
-# crates.io, releases are still published by hand (docs/RELEASING.md). When a
-# tag's version is already on crates.io, as it is with that process, the
-# publish job is skipped (no crates-io environment approval is requested) and
-# only the verification runs.
+# The only way to publish to crates.io (since 2026-11-16; the owner revoked
+# the last API token). The publish job waits for the owner's approval of the
+# crates-io environment. If a tag's version is already on crates.io (releases
+# up to 0.5.0, published by hand), the publish job is skipped and only the
+# verification runs.
 #
 # Owner settings on crates.io (rust-mirror-gui → Settings → Trusted
 # Publishing → GitHub): repository owner rustcommons, repository name

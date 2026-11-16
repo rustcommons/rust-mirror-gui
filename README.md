@@ -22,7 +22,9 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.5.0.** 0.5.0 builds its fonts in (no system fonts needed) and
+**Status: 0.5.1.** 0.5.1 is the first release whose downloads come with an
+SBOM, SLSA Build Level 3 provenance and reproducible builds, and it builds in
+rust-mirror 0.5.4. 0.5.0 builds its fonts in (no system fonts needed) and
 documents the [supported platforms](#supported-platforms). 0.4.3 is the
 first release with prebuilt downloads for Windows, Linux and macOS, and its
 window opens on Linux machines without a GPU that have an older Mesa (for
@@ -33,7 +35,7 @@ small windows and scaled displays. 0.4.0 added Cargo.lock import and crate
 retention. Tested inside real Remote Desktop sessions on Windows Server 2022
 and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.md));
 macOS runtime and screen readers are not yet verified; see
-[known limits](docs/releases/v0.5.0.md#validation-and-limits).
+[known limits](docs/releases/v0.5.1.md#validation-and-limits).
 
 ## Supported platforms
 
@@ -88,6 +90,9 @@ from 0.4.3 on has ready-to-run archives:
 | macOS Apple silicon | `rust-mirror-gui-<version>-aarch64-apple-darwin.tar.gz` |
 | macOS Intel | `rust-mirror-gui-<version>-x86_64-apple-darwin.tar.gz` |
 
+From 0.5.1 on, each release also has `rust-mirror-gui-<version>.cdx.json`, a
+CycloneDX SBOM listing every dependency built into the program.
+
 Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
 the folder. No separate rust-mirror installation is needed. On Windows, no
 extra runtime is needed either: the C runtime is linked into the executable,
@@ -97,7 +102,7 @@ so the Visual C++ Redistributable isn't required.
 
 ```powershell
 # Windows (PowerShell): compare with the line for this file in SHA256SUMS
-Get-FileHash .\rust-mirror-gui-0.5.0-x86_64-pc-windows-msvc.zip
+Get-FileHash .\rust-mirror-gui-0.5.1-x86_64-pc-windows-msvc.zip
 ```
 
 ```sh
@@ -105,13 +110,19 @@ sha256sum -c --ignore-missing SHA256SUMS         # Linux
 shasum -a 256 -c --ignore-missing SHA256SUMS     # macOS
 ```
 
-Every archive also has a signed build-provenance attestation, which proves it
-was built by this repository's release workflow from the tagged source. With
-the [GitHub CLI](https://cli.github.com/):
+Every file also has a signed build-provenance attestation, which proves it
+was built by this repository's release workflow from the tagged source. From
+0.5.1 on, the release build signs it (SLSA Build Level 3), and each archive
+also has an attestation for its SBOM. With the
+[GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify rust-mirror-gui-0.5.0-x86_64-unknown-linux-gnu.tar.gz --repo rustcommons/rust-mirror-gui
+gh attestation verify rust-mirror-gui-0.5.1-x86_64-unknown-linux-gnu.tar.gz \
+  --repo rustcommons/rust-mirror-gui \
+  --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
 ```
+
+For 0.4.3 and 0.5.0, use `release-binaries.yml` as the signer workflow.
 
 **The binaries are not code-signed**, so your system may warn the first time:
 
@@ -209,7 +220,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.5.0](docs/releases/v0.5.0.md), [0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.5.1](docs/releases/v0.5.1.md), [0.5.0](docs/releases/v0.5.0.md), [0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

@@ -2,37 +2,54 @@
 
 This is the repository's own procedure. It follows the Rust Commons
 [release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md).
-Publishing needs the owner's authorization for each release; the coordinator
-publishes from the owner's machine.
+Publishing needs the owner's authorization for each release. Since
+2026-11-16 the only way to publish to crates.io is
+[Trusted Publishing](../.github/workflows/trusted-publishing.yml): a tag push
+asks for the owner's approval of the `crates-io` environment, then uploads
+with a short-lived token. No crates.io API token exists any more (the owner
+revoked the last one), so nobody publishes from a personal machine.
 
 ## Steps
 
-1. **Release PR:**
+1. **Release PR (maintainer):**
    - the version in `Cargo.toml`;
    - a dated `CHANGELOG.md` entry;
    - `docs/releases/vX.Y.Z.md`;
    - evidence under `docs/evals/`.
 
-   CI must be green (the release-documentation check included).
-2. **Merge and publish** (coordinator, owner-authorized): merge normally, then
-   run `cargo publish --locked` from a clean worktree at the merge.
-3. **Post-publication** (maintainer):
+   CI must be green at the exact head: the release-documentation check, and
+   the release dry run (all builds, the old-Linux launches without system
+   fonts, the Windows capture). Before a release PR merges, also run the
+   reproducible-build check on it.
+2. **Merge** (coordinator, owner-authorized): merge normally.
+3. **Tag and release notes (maintainer), together:**
+   - create the annotated tag `vX.Y.Z` on the merge and push it;
+   - right away, create the GitHub Release whose body is exactly
+     `docs/releases/vX.Y.Z.md`.
+
+   The tag push starts two workflows:
+   - [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml)
+     waits for the owner to approve the `crates-io` environment, runs
+     `cargo publish --locked`, then checks that the published crate is the
+     tag's source (checksums, `.cargo_vcs_info.json`, every file);
+   - [`release-binaries.yml`](../.github/workflows/release-binaries.yml)
+     waits up to 30 minutes for the GitHub Release, has the reusable
+     [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build
+     them (with
+     [`build-binaries-core.yml`](../.github/workflows/build-binaries-core.yml))
+     and sign them, then attaches the binaries described below.
+
+   Create the release promptly: only the tag-push run produces attestations
+   whose source and signer are the release commit. A later manual run is
+   signed at another commit and fails the strict verification.
+4. **Post-publication (maintainer)**, once both runs succeeded:
    - verify the registry archive against the merge;
    - verify docs.rs and a fresh `cargo install --locked`;
-   - create the annotated tag `vX.Y.Z` on the merge;
-   - create the GitHub Release, whose body is exactly `docs/releases/vX.Y.Z.md`;
+   - verify the live assets, `SHA256SUMS` and every attestation (signer
+     `build-binaries.yml`, source and signer digest = the release commit,
+     SBOM bindings);
    - run the release-documentation checks;
    - open a publication-record PR.
-4. **Binaries:** pushing the tag starts
-   [`release-binaries.yml`](../.github/workflows/release-binaries.yml). It
-   waits for the release from step 3, has the reusable
-   [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build
-   them (with
-   [`build-binaries-core.yml`](../.github/workflows/build-binaries-core.yml))
-   and sign them, then attaches the binaries described below. The same tag push
-   also starts [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml).
-   While the owner publishes by hand (step 2), it only checks that the
-   published crate is the tag's source. Check its run, and record it in the publication record.
 5. **Downloads, as a user gets them:** run
    [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
    (Actions → Verify release downloads, `tag`). It downloads the live assets,

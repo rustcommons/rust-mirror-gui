@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-16
+
+The first release whose downloads come with an SBOM, SLSA Build Level 3
+provenance and reproducible builds, published to crates.io by Trusted
+Publishing. The built-in engine is rust-mirror 0.5.4. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.5.1.md).
+
+- **Built on rust-mirror 0.5.4** (the same engine code as 0.5.3, with its
+  patched dependency lineage). The lock now has rustls 0.23.46,
+  rustls-webpki 0.103.17 (was 0.103.16) and rustix 1.1.6; cargo-deny
+  reports no advisories.
+- **Published by Trusted Publishing:** `trusted-publishing.yml` (with the
+  owner's approval of the `crates-io` environment) is now the only way to
+  publish; no crates.io API token exists.
 - **Security baseline** (owner-approved 2026-11-15):
   - Dependabot proposes monthly version updates for Cargo and GitHub
     Actions (minor and patch grouped; 7-day cooldown; at most 2 open PRs per
