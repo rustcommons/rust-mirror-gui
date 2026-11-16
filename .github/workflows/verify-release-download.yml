@@ -109,7 +109,7 @@ jobs:
           $out
           if (-not ($out -match '"protocol":1')) { throw "worker did not report protocol 1" }
           ./qualification/capture-window.ps1 -Exe $exe -Out shots\window.png
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: windows-window
@@ -163,7 +163,7 @@ jobs:
           "$exe" --worker --version < /dev/null | tee worker.txt
           grep -q '"protocol":1' worker.txt
           sh tools/qualification/linux-launch.sh "$exe" shots
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linux-window-${{ strategy.job-index }}

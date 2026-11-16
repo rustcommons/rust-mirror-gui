@@ -155,12 +155,12 @@ jobs:
             --version "$VERSION" --target "${{ matrix.target }}" --out dist \
             --glibc "$GLIBC_MIN" --glibc-built "$GLIBC_BUILT" \
             --source "$SOURCE_LABEL at commit $(git -C src rev-parse HEAD)"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-prefix }}dist-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: runner.os == 'Windows'
         with:
           name: ${{ inputs.artifact-prefix }}window-${{ matrix.target }}
@@ -220,7 +220,7 @@ jobs:
           echo "--- with WGPU_BACKEND=gl (OpenGL), for comparison"
           WGPU_BACKEND=gl sh tools/qualification/linux-launch.sh "$exe" shots/gl || echo "OpenGL launch failed too"
           [ $ok -eq 0 ] || { echo "::error::the default launch failed on ${{ matrix.container }}"; exit 1; }
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ${{ inputs.artifact-prefix }}linux-launch-${{ strategy.job-index }}
@@ -271,7 +271,7 @@ jobs:
           [ "$(wc -l < SHA256SUMS)" -eq 5 ] || { echo "::error::SHA256SUMS must list the 4 archives and the SBOM"; exit 1; }
           cat SHA256SUMS
           sha256sum -c SHA256SUMS
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-prefix }}release-files
           path: dist/*
