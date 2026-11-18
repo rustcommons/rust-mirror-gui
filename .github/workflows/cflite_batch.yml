@@ -1,0 +1,44 @@
+name: ClusterFuzzLite batch fuzzing
+
+# Weekly batch fuzzing (ClusterFuzzLite): every target for 1800 s with
+# AddressSanitizer, growing the corpus that PR fuzzing starts from. Crashes
+# fail the run and are uploaded to code scanning (SARIF). See docs/FUZZING.md.
+on:
+  schedule:
+    - cron: '41 3 * * 3' # Wednesdays
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # the previous corpus is a workflow artifact
+      security-events: write # upload crash SARIF to code scanning
+    steps:
+      - name: Build fuzzers (address)
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          sanitizer: address
+      - name: Run fuzzers (batch, 1800 s)
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 1800
+          mode: batch
+          sanitizer: address
+          output-sarif: true
+      - name: Upload crash SARIF
+        if: always() && steps.build.outcome == 'success'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: cifuzz-sarif/results.sarif
+          checkout_path: cifuzz-sarif
+          category: clusterfuzzlite-batch

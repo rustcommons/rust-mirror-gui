@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+- **Fuzzing:**
+  - four cargo-fuzz targets in `fuzz/`: worker event lines, the whole event
+    stream with its line-size limit, the settings file, and company CA
+    files;
+  - seed corpora from the test fixtures;
+  - ClusterFuzzLite fuzzes PRs that change the code for 300 s, and runs a
+    weekly 1800 s batch; crashes go to code scanning.
+
+  The event-line reader moved into `job::read_events` and settings
+  decoding into `settings::from_bytes`, with new unit tests; behaviour is
+  unchanged. See [docs/FUZZING.md](docs/FUZZING.md).
+- **Pinned dependencies:** no download is piped into an interpreter any
+  more (`trusted-publishing.yml`). The download check runs an archive only
+  after its SHA-256 matched the attested `SHA256SUMS`. Dependabot also
+  updates the ClusterFuzzLite image digest.
+- **Rules** (AGENTS.md): never `[skip ci]`; every install pinned.
+
 - Documentation: add the 0.5.1 [publication record](docs/evals/2026-11-16-v0.5.1-publication.md),
   and the SLSA 3 badge, after the live verification of the release's
   attestations.

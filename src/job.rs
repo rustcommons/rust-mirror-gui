@@ -574,47 +574,81 @@ fn describe_exit(status: &ExitStatus) -> String {
     }
 }
 
+/// How reading a worker's event stream ended.
+#[derive(Debug, PartialEq)]
+pub enum ReadEnd {
+    /// End of output.
+    Eof,
+    /// `on_event` asked to stop (the window is gone).
+    Stopped,
+    /// A line was longer than the limit, or reading failed; the message says which.
+    Error(String),
+}
+
+/// Read JSON-lines events from `input`, one line of at most `max_line` bytes
+/// at a time, and hand each parsed event to `on_event` (which returns false to
+/// stop). Blank lines are skipped and invalid UTF-8 is replaced; a line that
+/// isn't valid JSON or a known event becomes `Event::Malformed` or
+/// `Event::Unknown` (see `Event::parse`).
+/// A longer line stops reading: the worker's output can't be trusted after it.
+pub fn read_events(
+    input: impl Read,
+    max_line: usize,
+    mut on_event: impl FnMut(Event) -> bool,
+) -> ReadEnd {
+    let mut reader = BufReader::new(input);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        match (&mut reader)
+            .take(max_line as u64 + 1)
+            .read_until(b'\n', &mut line)
+        {
+            Ok(0) => return ReadEnd::Eof,
+            Ok(_) if line.len() > max_line => {
+                return ReadEnd::Error(format!(
+                    "event line exceeds {} MiB; stopped reading events",
+                    max_line / (1024 * 1024)
+                ))
+            }
+            Ok(_) => {
+                let text = String::from_utf8_lossy(&line);
+                if text.trim().is_empty() {
+                    continue;
+                }
+                if !on_event(Event::parse(&text)) {
+                    return ReadEnd::Stopped;
+                }
+            }
+            Err(e) => return ReadEnd::Error(format!("reading events failed: {e}")),
+        }
+    }
+}
+
 fn spawn_stdout_reader(
     stdout: impl Read + Send + 'static,
     tx: Sender<Msg>,
     wake: impl Fn() + Send + 'static,
 ) {
     std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        let mut line = Vec::new();
-        let err = loop {
-            line.clear();
-            match (&mut reader)
-                .take(protocol::MAX_LINE as u64 + 1)
-                .read_until(b'\n', &mut line)
-            {
-                Ok(0) => break None,
-                Ok(_) if line.len() > protocol::MAX_LINE => {
-                    break Some(format!(
-                        "event line exceeds {} MiB; stopped reading events",
-                        protocol::MAX_LINE / (1024 * 1024)
-                    ))
-                }
-                Ok(_) => {
-                    let text = String::from_utf8_lossy(&line);
-                    if text.trim().is_empty() {
-                        continue;
-                    }
-                    let event = Event::parse(&text);
-                    // Wake the window at once only for events that change the
-                    // job's state (a retry wait, the final result: finished or
-                    // failed). Progress and stage lines arrive many times a
-                    // second and are picked up by the regular redraw instead.
-                    let urgent = matches!(event, Event::Retry(_) | Event::Result(_));
-                    if tx.send(Msg::Event(event)).is_err() {
-                        return;
-                    }
-                    if urgent {
-                        wake();
-                    }
-                }
-                Err(e) => break Some(format!("reading events failed: {e}")),
+        let end = read_events(stdout, protocol::MAX_LINE, |event| {
+            // Wake the window at once only for events that change the
+            // job's state (a retry wait, the final result: finished or
+            // failed). Progress and stage lines arrive many times a
+            // second and are picked up by the regular redraw instead.
+            let urgent = matches!(event, Event::Retry(_) | Event::Result(_));
+            if tx.send(Msg::Event(event)).is_err() {
+                return false;
             }
+            if urgent {
+                wake();
+            }
+            true
+        });
+        let err = match end {
+            ReadEnd::Stopped => return,
+            ReadEnd::Eof => None,
+            ReadEnd::Error(e) => Some(e),
         };
         let _ = tx.send(Msg::StdoutClosed(err));
         wake();
@@ -767,6 +801,64 @@ mod tests {
             r#"{"type":"hashing","path":"x.part","count":1,"total":2}"#,
         ));
         assert!(!p.files.contains_key("x.part"));
+    }
+
+    #[test]
+    fn read_events_parses_lines_and_skips_blanks() {
+        let input =
+            b"{\"type\":\"hello\",\"protocol\":1}\n\n  \n{\"type\":\"heartbeat\"}\nnot json\n";
+        let mut seen = Vec::new();
+        let end = read_events(&input[..], 1024, |e| {
+            seen.push(e);
+            true
+        });
+        assert_eq!(end, ReadEnd::Eof);
+        assert_eq!(seen.len(), 3, "{seen:?}");
+        assert!(matches!(seen[2], Event::Malformed { .. }), "{:?}", seen[2]);
+    }
+
+    #[test]
+    fn read_events_stops_at_an_overlong_line() {
+        let mut input = b"{\"type\":\"heartbeat\"}\n".to_vec();
+        input.extend(std::iter::repeat_n(b'x', 100));
+        input.extend(b"\n{\"type\":\"heartbeat\"}\n");
+        let mut n = 0;
+        let end = read_events(&input[..], 64, |_| {
+            n += 1;
+            true
+        });
+        assert_eq!(n, 1, "nothing after the long line is read");
+        assert!(
+            matches!(end, ReadEnd::Error(ref m) if m.contains("exceeds")),
+            "{end:?}"
+        );
+    }
+
+    #[test]
+    fn read_events_takes_a_line_of_exactly_the_limit_and_invalid_utf8() {
+        let mut line = vec![0xff, 0xfe];
+        line.resize(63, b'a');
+        line.push(b'\n'); // 64 bytes with the newline
+        let mut n = 0;
+        assert_eq!(
+            read_events(&line[..], 64, |_| {
+                n += 1;
+                true
+            }),
+            ReadEnd::Eof
+        );
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn read_events_stops_when_asked() {
+        let input = b"{\"type\":\"heartbeat\"}\n{\"type\":\"heartbeat\"}\n";
+        let mut n = 0;
+        let end = read_events(&input[..], 1024, |_| {
+            n += 1;
+            false
+        });
+        assert_eq!((end, n), (ReadEnd::Stopped, 1));
     }
 
     #[test]
