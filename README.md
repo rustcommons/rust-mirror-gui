@@ -5,6 +5,7 @@
 [![crates.io](https://img.shields.io/crates/v/rust-mirror-gui)](https://crates.io/crates/rust-mirror-gui)
 [![docs.rs](https://img.shields.io/docsrs/rust-mirror-gui)](https://docs.rs/rust-mirror-gui)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](docs/evals/2026-11-16-v0.5.1-publication.md#slsa-build-level-3-live-verification)
 
 A desktop app for building offline Rust toolchain mirrors with
 [rust-mirror](https://crates.io/crates/rust-mirror). Use it to choose

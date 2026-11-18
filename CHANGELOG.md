@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Documentation: add the 0.5.1 [publication record](docs/evals/2026-11-16-v0.5.1-publication.md),
+  and the SLSA 3 badge, after the live verification of the release's
+  attestations.
+- Testing: `verify-release-download.yml` checks v0.5.1 by default.
+
 ## [0.5.1] - 2026-11-16
 
 The first release whose downloads come with an SBOM, SLSA Build Level 3
