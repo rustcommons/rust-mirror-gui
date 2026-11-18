@@ -110,6 +110,26 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   `trusted-publishing.yml`, which waits for the owner's approval of the
   `crates-io` environment. Never ask anyone to publish from a machine; see
   `docs/RELEASING.md`.
+- **Never skip CI** (owner rule, 2026-11-17): no `[skip ci]`, `[ci skip]` or
+  similar in commit or merge messages. They skip CodeQL and CI, which lowers
+  Scorecard's SAST and CI-Tests.
+- **Every install in a workflow or script is pinned:**
+  - actions by commit SHA;
+  - container and Docker images by digest;
+  - `cargo install` with `--locked` and an exact `--version` (or a path
+    checked out at a pinned commit);
+  - pip only with `--require-hashes -r <hashed requirements file>`.
+
+  Never pipe a download into a shell or interpreter (`curl … | sh`,
+  `| python3`). Save it to a file first. Run a downloaded file only after
+  its SHA-256 matched a pinned or attested value.
+- **Fuzzing:** the parsers of untrusted input have cargo-fuzz targets in
+  `fuzz/` (a separate, unpublished workspace; `libfuzzer-sys` and
+  `arbitrary` there only). ClusterFuzzLite fuzzes PRs that change the code
+  for 300 s (`cflite_pr.yml`) and runs a weekly 1800 s batch
+  (`cflite_batch.yml`). A new parser of outside input gets a target and
+  seeds. A crash is a real bug: fix it with a regression test, or report
+  it. See `docs/FUZZING.md`.
 - **Security reports:** the org-wide `SECURITY.md` (in the `.github`
   repository) applies; this repository has none of its own.
 

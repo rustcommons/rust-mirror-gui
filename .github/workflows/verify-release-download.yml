@@ -31,11 +31,18 @@ jobs:
     # Dependabot PRs run only the core checks (org runner budget).
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    # The SHA-256 of each archive, from SHA256SUMS after its attestation
+    # verified: the run jobs check their download against these before
+    # running anything.
+    outputs:
+      windows-sha256: ${{ steps.sums.outputs.windows }}
+      linux-sha256: ${{ steps.sums.outputs.linux }}
     permissions:
       contents: read
       attestations: read
     steps:
       - name: Download every asset; checksums and attestations
+        id: sums
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -74,10 +81,11 @@ jobs:
           fi
           for f in *.tar.gz; do echo "== $f"; tar -tzf "$f"; done
           echo "== zip"; python3 -c "import zipfile,glob; [print(n) for n in zipfile.ZipFile(glob.glob('*.zip')[0]).namelist()]"
+          echo "windows=$(awk '/x86_64-pc-windows-msvc\.zip$/ {print $1}' SHA256SUMS)" >> "$GITHUB_OUTPUT"
+          echo "linux=$(awk '/x86_64-unknown-linux-gnu\.tar\.gz$/ {print $1}' SHA256SUMS)" >> "$GITHUB_OUTPUT"
 
   windows:
-    # Dependabot PRs run only the core checks (org runner budget).
-    if: github.actor != 'dependabot[bot]'
+    needs: assets
     runs-on: windows-2022
     steps:
       - name: Capture script (this workflow's commit)
@@ -89,12 +97,16 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          # verified by the assets job (attested SHA256SUMS)
+          EXPECTED_SHA256: ${{ needs.assets.outputs.windows-sha256 }}
         run: |
           $version = $env:TAG.TrimStart('v')
           $zip = "$env:NAME-$version-x86_64-pc-windows-msvc.zip"
           New-Item -ItemType Directory -Force dl, shots | Out-Null
           gh release download $env:TAG --repo $env:REPO --pattern $zip --pattern SHA256SUMS --dir dl
-          $expected = (Get-Content dl\SHA256SUMS | Where-Object { $_ -like "*  $zip" }).Split(' ')[0]
+          # Run nothing that doesn't match the attested checksum.
+          $expected = $env:EXPECTED_SHA256
+          if (-not $expected) { throw "no attested checksum from the assets job" }
           $actual = (Get-FileHash "dl\$zip" -Algorithm SHA256).Hash.ToLower()
           Write-Output "SHA-256 $actual (SHA256SUMS: $expected)"
           if ($actual -ne $expected) { throw "checksum mismatch" }
@@ -116,8 +128,7 @@ jobs:
           path: shots
 
   linux:
-    # Dependabot PRs run only the core checks (org runner budget).
-    if: github.actor != 'dependabot[bot]'
+    needs: assets
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -146,12 +157,17 @@ jobs:
           persist-credentials: false
       - name: Download from the public release URL, check and run
         shell: bash
+        env:
+          # verified by the assets job (attested SHA256SUMS)
+          EXPECTED_SHA256: ${{ needs.assets.outputs.linux-sha256 }}
         run: |
           version="${TAG#v}"
           tgz="$NAME-$version-x86_64-unknown-linux-gnu.tar.gz"
           base="https://github.com/$REPO/releases/download/$TAG"
-          curl -fsSLO "$base/$tgz"; curl -fsSLO "$base/SHA256SUMS"
-          sha256sum -c --ignore-missing SHA256SUMS
+          curl -fsSLO "$base/$tgz"
+          # Run nothing that doesn't match the attested checksum.
+          [ -n "$EXPECTED_SHA256" ] || { echo "::error::no attested checksum from the assets job"; exit 1; }
+          echo "$EXPECTED_SHA256  $tgz" | sha256sum -c -
           tar -xzf "$tgz"
           # From 0.5.0 on the fonts are built in: run with no system fonts at all.
           if [ -f "$NAME-$version-x86_64-unknown-linux-gnu/LICENSE-DejaVu.txt" ]; then

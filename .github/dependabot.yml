@@ -32,3 +32,11 @@ updates:
       # Pinned on purpose to the toolchain-named ref (1.95.0 = the MSRV and
       # CI toolchain); a new toolchain is a deliberate change.
       - dependency-name: dtolnay/rust-toolchain
+  - package-ecosystem: docker
+    # The ClusterFuzzLite build image (pinned by digest).
+    directory: /.clusterfuzzlite
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2

@@ -1,0 +1,53 @@
+name: ClusterFuzzLite PR fuzzing
+
+# Code-change fuzzing (ClusterFuzzLite) for pull requests that touch the code
+# or the fuzz targets: builds fuzz/ with AddressSanitizer and fuzzes the
+# targets affected by the change for 300 s. Crashes fail the check and are
+# uploaded to code scanning (SARIF). See docs/FUZZING.md.
+on:
+  pull_request:
+    paths:
+      - src/**
+      - fuzz/**
+      - Cargo.toml
+      - Cargo.lock
+      - .clusterfuzzlite/**
+      - .github/workflows/cflite_pr.yml
+permissions:
+  contents: read
+# One run per PR: a new push cancels the PR's older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  fuzz:
+    # Dependabot PRs run only the core checks (org runner budget).
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload crash SARIF to code scanning
+    steps:
+      - name: Build fuzzers (address)
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: rust
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: address
+      - name: Run fuzzers (code change, 300 s)
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: code-change
+          sanitizer: address
+          output-sarif: true
+      - name: Upload crash SARIF
+        if: always() && steps.build.outcome == 'success'
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: cifuzz-sarif/results.sarif
+          checkout_path: cifuzz-sarif
+          category: clusterfuzzlite

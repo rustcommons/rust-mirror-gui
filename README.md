@@ -226,6 +226,7 @@ writes to a server: use only a fresh, empty test repository.
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)
 - [Release policy](https://github.com/rustcommons/.github/blob/main/docs/RELEASING.md) and this repository's [release procedure](docs/RELEASING.md), including prebuilt binaries
+- [Fuzzing](docs/FUZZING.md): the fuzz targets, ClusterFuzzLite in CI, and how to run them locally
 
 For development, run `cargo test --all-features`. The `fake-backend` feature
 builds a scripted test worker; it is never installed.

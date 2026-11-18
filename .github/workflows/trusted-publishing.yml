@@ -85,8 +85,12 @@ jobs:
             api=$(curl -sf -A "$ua" "https://crates.io/api/v1/crates/$CRATE/$VERSION") && break; sleep 20
           done
           [ -n "${api:-}" ] || { echo "::error::$CRATE $VERSION is not on crates.io"; exit 1; }
-          sum=$(printf '%s' "$api" | python3 -c "import json,sys; print(json.load(sys.stdin)['version']['checksum'])")
-          index=$(curl -sf -A "$ua" "https://index.crates.io/ru/st/$CRATE" | python3 -c "import json,sys,os; print([json.loads(l) for l in sys.stdin if json.loads(l)['vers']==os.environ['VERSION']][0]['cksum'])")
+          # Downloads are saved to files and only read as data (never piped
+          # into an interpreter or executed).
+          printf '%s' "$api" > api.json
+          sum=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version']['checksum'])" api.json)
+          curl -sfL -A "$ua" -o index.jsonl "https://index.crates.io/ru/st/$CRATE"
+          index=$(python3 -c "import json,sys,os; print([json.loads(l) for l in open(sys.argv[1]) if json.loads(l)['vers']==os.environ['VERSION']][0]['cksum'])" index.jsonl)
           curl -sfL -A "$ua" -o crate.tar.gz "https://static.crates.io/crates/$CRATE/$CRATE-$VERSION.crate"
           got=$(sha256sum crate.tar.gz | cut -d' ' -f1)
           echo "archive $got; API $sum; index $index"

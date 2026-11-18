@@ -1,0 +1,54 @@
+# Fuzz targets for rust-mirror-gui (cargo-fuzz / libFuzzer; ClusterFuzzLite in
+# CI). Its own workspace and lockfile, never published: libfuzzer-sys is a
+# dependency of this crate only, not of rust-mirror-gui. See docs/FUZZING.md.
+[package]
+name = "rust-mirror-gui-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+rust-mirror-gui = { path = ".." }
+# Already dependencies of rust-mirror-gui; named here so the targets can call
+# the engine's certificate reader and serde_json directly.
+rust-mirror = "=0.5.4"
+serde_json = "1.0"
+
+# A workspace of its own, so the main crate's build never includes it.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "event_line"
+path = "fuzz_targets/event_line.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_stream"
+path = "fuzz_targets/event_stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "settings"
+path = "fuzz_targets/settings.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ca_file"
+path = "fuzz_targets/ca_file.rs"
+test = false
+doc = false
+bench = false

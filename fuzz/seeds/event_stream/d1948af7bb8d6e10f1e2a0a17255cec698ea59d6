@@ -1,0 +1,3 @@
+{"command":"inspect-ca","elapsed_ms":0,"protocol":1,"seq":0,"tool_version":"0.5.0","type":"hello"}
+{"elapsed_ms":0,"index":1,"name":"read certificate file","seq":1,"total":1,"type":"stage"}
+{"elapsed_ms":1,"error":null,"ok":true,"report":{"certificates":[{"issuer":"CN=127.0.0.1","not_after":"Sun, 15 Nov 2026 21:43:04 +0000","sha256":"f468e7587fde571c523cdb6ab62a3dce51438ebae111a33f8e99c6a7f896ef6a","subject":"CN=127.0.0.1"}]},"seq":2,"type":"result"}

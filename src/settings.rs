@@ -88,10 +88,17 @@ pub fn path() -> Option<PathBuf> {
 }
 
 pub fn load() -> Settings {
-    let mut s: Settings = path()
-        .and_then(|p| std::fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    from_bytes(
+        &path()
+            .and_then(|p| std::fs::read(p).ok())
+            .unwrap_or_default(),
+    )
+}
+
+/// Settings from the bytes of a settings file. Anything unreadable gives the
+/// defaults: a damaged file never stops the app from starting.
+pub fn from_bytes(bytes: &[u8]) -> Settings {
+    let mut s: Settings = serde_json::from_slice(bytes).unwrap_or_default();
     if s.rustup_version.is_empty() {
         s.rustup_version = "1.28.2".into();
     }
@@ -107,4 +114,29 @@ pub fn save(settings: &Settings) -> Result<(), String> {
     let text = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_damaged_settings_file_gives_the_defaults() {
+        for bytes in [
+            &b""[..],
+            b"not json",
+            b"{\"rustup_version\": 5}",
+            &[0xff, 0xfe],
+        ] {
+            let s = from_bytes(bytes);
+            assert_eq!(s.rustup_version, "1.28.2");
+        }
+    }
+
+    #[test]
+    fn saved_settings_read_back_unchanged() {
+        let mut s = from_bytes(b"");
+        s.config_path = "C:/mirror/mirror.toml".into();
+        assert_eq!(from_bytes(&serde_json::to_vec(&s).unwrap()), s);
+    }
 }
