@@ -40,10 +40,11 @@ fuzzers test the same dependency versions that ship.
   and grows the corpus that PR fuzzing starts from.
 - **Crashes** fail the run, and are uploaded to code scanning as SARIF.
 - **Build image:** `.clusterfuzzlite/` holds the Dockerfile, `build.sh` and
-  `project.yaml`. The OSS-Fuzz Rust base image is pinned by digest, which
-  pins its nightly toolchain too; Dependabot proposes digest updates.
-  Sanitizer builds need nightly, so the project's stable 1.95.0 isn't used
-  here.
+  `project.yaml`. The OSS-Fuzz Rust base image is pinned by digest, and
+  Dependabot proposes digest updates. Its built-in nightly is older than the
+  project's minimum Rust (1.95), so the build uses the pinned
+  `nightly-2026-11-15`. Sanitizer builds need nightly, so the project's
+  stable 1.95.0 can't be used here.
 
 **A crash is a real bug.** Fix it, add a regression test (a unit test, or
 the input in `fuzz/seeds/<target>/`), and say so in the changelog. If the
@@ -54,9 +55,9 @@ fix needs a decision, report it instead.
 You need a nightly Rust toolchain and cargo-fuzz, installed reproducibly:
 
 ```sh
-rustup toolchain install nightly --profile minimal
+rustup toolchain install nightly-2026-11-15 --profile minimal
 cargo install cargo-fuzz --version 0.13.2 --locked
-cargo +nightly fuzz list
+cargo +nightly-2026-11-15 fuzz list
 ```
 
 Run a target. New inputs go to `fuzz/corpus/<target>` (git-ignored); the
@@ -64,10 +65,10 @@ seeds are only read:
 
 ```sh
 mkdir -p fuzz/corpus/event_stream
-cargo +nightly fuzz run event_stream fuzz/corpus/event_stream fuzz/seeds/event_stream \
+cargo +nightly-2026-11-15 fuzz run event_stream fuzz/corpus/event_stream fuzz/seeds/event_stream \
   -- -max_total_time=300 -max_len=65536
 ```
 
-`cargo +nightly fuzz build` builds all targets without running them. To
+`cargo +nightly-2026-11-15 fuzz build` builds all targets without running them. To
 reproduce a crash, pass its file:
-`cargo +nightly fuzz run <target> fuzz/artifacts/<target>/crash-…`.
+`cargo +nightly-2026-11-15 fuzz run <target> fuzz/artifacts/<target>/crash-…`.
