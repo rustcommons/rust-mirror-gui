@@ -20,7 +20,7 @@ env:
   NAME: rust-mirror-gui
   REPO: ${{ github.repository }}
   # A pull request checks the release this workflow was added for.
-  TAG: ${{ inputs.tag || 'v0.5.1' }}
+  TAG: ${{ inputs.tag || 'v0.5.2' }}
 # One run per PR: a new push cancels the PR's older runs (pushes to main and
 # tags are never cancelled).
 concurrency:

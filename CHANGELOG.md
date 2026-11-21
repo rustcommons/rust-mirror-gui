@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- **0.5.2 publication record**
+  ([docs/evals/2026-11-21-v0.5.2-publication.md](docs/evals/2026-11-21-v0.5.2-publication.md)):
+  - registry, docs.rs and a fresh install;
+  - every attestation, the SBOM bindings and the first `.intoto.jsonl`
+    bundle;
+  - the public download check.
+
+  The tag-bound binary run timed out before the release existed, and the
+  binaries were attached by the exact-tag dispatch. The download check now
+  defaults to v0.5.2.
 ## [0.5.2] - 2026-11-21
 
 Built on rust-mirror 0.6.0, and the first release with a signed provenance
