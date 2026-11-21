@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-21
+
+Built on rust-mirror 0.6.0, and the first release with a signed provenance
+bundle next to its downloads. The app works as in 0.5.1. See the
+[versioned notes](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/releases/v0.5.2.md).
+
+- **Built on rust-mirror 0.6.0** (`rust-mirror = "0.6"`). Its engine code
+  and event protocol 1 are unchanged from 0.5.4; it updates locked
+  dependencies.
+  - Lock changes: sha2 0.10.9 → 0.11.1 (with digest, block-buffer,
+    crypto-common, cpufeatures) and toml 0.8.23 → 1.2.2 (with
+    serde_spanned and toml_parser).
+  - Replaced in the graph: hybrid-array, const-oid and toml_writer replace
+    generic-array, toml_write and the old toml_edit/toml_datetime/winnow
+    copies.
+  - The TLS stack is unchanged: rustls 0.23.46, rustls-webpki 0.103.17.
+  - 0.6.0's one breaking change (`Error::report` holds a toml 1.x value)
+    needs no source change here: the app only reads that field.
+  - No new crate dependencies; the fuzz crate's lock moves the same way.
 - **CI warnings cleared** (no change to what is built):
   - **Node 24:** actions/checkout v7.0.1, upload-artifact v7.0.2,
     download-artifact v8.0.2 and setup-python v7.1.0, still pinned by
@@ -11,7 +30,7 @@
   - **Rust toolchain:** the ignored `toolchain:` inputs are gone; the
     action is pinned to its `1.95.0` branch, and each job prints
     `rustc --version`.
-- **Signed provenance on each release** (from the next release on): the
+- **Signed provenance on each release** (from 0.5.2 on): the
   release also gets `rust-mirror-gui-X.Y.Z.intoto.jsonl`, the Sigstore
   bundle of its build-provenance attestation (JSON Lines; the same design
   as rust-mirror).
