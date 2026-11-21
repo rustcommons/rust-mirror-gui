@@ -60,8 +60,9 @@ def assemble(out, paths):
             lines.append(json.dumps(bundle, separators=(",", ":"), sort_keys=True))
     if not lines:
         sys.exit("no bundles")
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines) + "\n")
+    # Bytes with "\n" only: the same file on every OS (no CRLF on Windows).
+    with open(out, "wb") as f:
+        f.write(("\n".join(lines) + "\n").encode("utf-8"))
     print(f"wrote {out}: {len(lines)} bundles")
 
 
@@ -94,7 +95,13 @@ def key(bundle):
 
 
 def match(jsonl, stored_paths):
-    stored = {key(b) for p in stored_paths for b in read_bundles(p)}
+    # gh writes "sha256:<digest>.jsonl" (Linux, macOS) or "sha256-<digest>.jsonl"
+    # (Windows, where ":" would make an NTFS stream); callers pass a glob.
+    import os
+    found = [p for p in stored_paths if os.path.isfile(p)]
+    if not found:
+        sys.exit("no stored attestations were downloaded (nothing to match against)")
+    stored = {key(b) for p in found for b in read_bundles(p)}
     attached = read_bundles(jsonl)
     unknown = [n for n, b in enumerate(attached, 1) if key(b) not in stored]
     if unknown:

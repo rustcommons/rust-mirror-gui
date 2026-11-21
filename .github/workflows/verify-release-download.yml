@@ -101,6 +101,7 @@ jobs:
           # attestations, so this path is exercised on every run.
           mkdir ../stored
           (cd ../stored && for f in $signed; do gh attestation download "../dl/$f" --repo "$REPO" --predicate-type https://slsa.dev/provenance/v1 > /dev/null; done)
+          [ -n "$(ls stored/*.jsonl ../stored/*.jsonl 2>/dev/null)" ] || { echo "::error::no stored attestations were downloaded"; exit 1; }
           if [ -n "$bundle" ]; then
             b="$bundle"; echo "the release carries $b"
           else

@@ -206,6 +206,7 @@ jobs:
             echo "verified with the bundle file: $(basename "$f")"
           done
           mkdir stored && (cd stored && for f in ../dist/*; do gh attestation download "$f" --repo "$REPO" --predicate-type https://slsa.dev/provenance/v1 > /dev/null; done)
+          [ -n "$(ls stored/*.jsonl ../stored/*.jsonl 2>/dev/null)" ] || { echo "::error::no stored attestations were downloaded"; exit 1; }
           python3 scripts/provenance_bundle.py match "$b" stored/*.jsonl
       - name: Upload to the release (never replaces)
         run: gh release upload "$TAG" dist/* bundle/* --repo "$REPO"
