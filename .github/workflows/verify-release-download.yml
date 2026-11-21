@@ -41,6 +41,12 @@ jobs:
       contents: read
       attestations: read
     steps:
+      - name: Bundle script (this workflow's commit)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: tools
+          sparse-checkout: scripts
+          persist-credentials: false
       - name: Download every asset; checksums and attestations
         id: sums
         env:
@@ -65,8 +71,18 @@ jobs:
             files=4; signer=release-binaries.yml; strict=""
           fi
           [ "$(wc -l < SHA256SUMS)" -eq $files ] || { echo "::error::SHA256SUMS must list $files files"; exit 1; }
-          [ "$(wc -l < ../assets.txt)" -eq $((files + 1)) ] || { echo "::error::expected $files files and SHA256SUMS"; exit 1; }
-          for f in *; do
+          # From 0.5.2 on, the release also carries its signed provenance:
+          # <name>-<version>.intoto.jsonl (Sigstore bundles, one per line).
+          bundle=$(ls *.intoto.jsonl 2>/dev/null || true)
+          extra=0; [ -n "$bundle" ] && extra=1
+          # required for every release after 0.5.1 (the last one without it)
+          version="${TAG#v}"
+          if [ -z "$bundle" ] && [ "$(printf '%s\n' 0.5.1 "$version" | sort -V | tail -n 1)" != 0.5.1 ]; then
+            echo "::error::$TAG has no $NAME-$version.intoto.jsonl"; exit 1
+          fi
+          [ "$(wc -l < ../assets.txt)" -eq $((files + 1 + extra)) ] || { echo "::error::expected $files files, SHA256SUMS and $extra bundle file"; exit 1; }
+          signed=$(ls | grep -v '\.intoto\.jsonl$')
+          for f in $signed; do
             gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict >/dev/null
             echo "provenance verified ($signer): $f"
           done
@@ -79,6 +95,26 @@ jobs:
             done
             python3 -c "import json,glob; d=json.load(open(glob.glob('*.cdx.json')[0])); print('SBOM:', d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')"
           fi
+          # The provenance bundle file: its subjects are exactly the release
+          # files, they verify offline (--bundle), and it holds exactly
+          # GitHub's stored provenance attestation. Releases before it get one built from the stored
+          # attestations, so this path is exercised on every run.
+          mkdir ../stored
+          (cd ../stored && for f in $signed; do gh attestation download "../dl/$f" --repo "$REPO" --predicate-type https://slsa.dev/provenance/v1 > /dev/null; done)
+          [ -n "$(ls stored/*.jsonl ../stored/*.jsonl 2>/dev/null)" ] || { echo "::error::no stored attestations were downloaded"; exit 1; }
+          if [ -n "$bundle" ]; then
+            b="$bundle"; echo "the release carries $b"
+          else
+            b=../assembled.intoto.jsonl
+            python3 ../tools/scripts/provenance_bundle.py assemble "$b" ../stored/*.jsonl
+            echo "no bundle file on $TAG (published before 0.5.2): checking one built from GitHub's stored attestations"
+          fi
+          python3 ../tools/scripts/provenance_bundle.py check "$b" $signed
+          python3 ../tools/scripts/provenance_bundle.py match "$b" ../stored/*.jsonl
+          for f in $signed; do
+            gh attestation verify "$f" --bundle "$b" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict >/dev/null
+            echo "verified offline with $(basename "$b"): $f"
+          done
           for f in *.tar.gz; do echo "== $f"; tar -tzf "$f"; done
           echo "== zip"; python3 -c "import zipfile,glob; [print(n) for n in zipfile.ZipFile(glob.glob('*.zip')[0]).namelist()]"
           echo "windows=$(awk '/x86_64-pc-windows-msvc\.zip$/ {print $1}' SHA256SUMS)" >> "$GITHUB_OUTPUT"

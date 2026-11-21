@@ -168,11 +168,15 @@ jobs:
         with:
           name: release-files
           path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-provenance
+          path: bundle
       - name: Release still matches its notes; none of these assets exist yet
         run: |
           python3 scripts/check-release-docs.py --repo "$REPO" --published-tag "$TAG"
           existing=$(gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name')
-          for f in dist/*; do
+          for f in dist/* bundle/*; do
             if printf '%s\n' "$existing" | grep -qxF "$(basename "$f")"; then
               echo "::error::$(basename "$f") already exists on $TAG; assets are never replaced"; exit 1
             fi
@@ -192,15 +196,30 @@ jobs:
             python3 -c "import json,sys; a=json.load(open('att.json')); s=json.load(open(sys.argv[1])); sys.exit(0 if any(x['verificationResult']['statement']['predicate'] == s for x in a) else 'the attested SBOM differs from ' + sys.argv[1])" dist/*.cdx.json
             echo "SBOM attestation verified, same SBOM: $(basename "$f")"
           done
+          # the provenance bundle file: its subjects are exactly the release
+          # files, they verify offline against it, and it holds exactly
+          # GitHub's stored provenance attestation
+          b=$(ls bundle/*.intoto.jsonl)
+          python3 scripts/provenance_bundle.py check "$b" dist/*
+          for f in dist/*; do
+            gh attestation verify "$f" --bundle "$b" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners > /dev/null
+            echo "verified with the bundle file: $(basename "$f")"
+          done
+          mkdir stored && (cd stored && for f in ../dist/*; do gh attestation download "$f" --repo "$REPO" --predicate-type https://slsa.dev/provenance/v1 > /dev/null; done)
+          [ -n "$(ls stored/*.jsonl ../stored/*.jsonl 2>/dev/null)" ] || { echo "::error::no stored attestations were downloaded"; exit 1; }
+          python3 scripts/provenance_bundle.py match "$b" stored/*.jsonl
       - name: Upload to the release (never replaces)
-        run: gh release upload "$TAG" dist/* --repo "$REPO"
+        run: gh release upload "$TAG" dist/* bundle/* --repo "$REPO"
       - name: Verify the live assets
         run: |
           mkdir check && cd check
           gh release download "$TAG" --repo "$REPO" --pattern "$NAME-*" --pattern SHA256SUMS
           sha256sum -c SHA256SUMS
           cmp SHA256SUMS ../dist/SHA256SUMS
-          for f in $NAME-* SHA256SUMS; do
+          b=$(ls *.intoto.jsonl)
+          cmp "$b" "../bundle/$b"
+          for f in $(ls $NAME-* SHA256SUMS | grep -v '\.intoto\.jsonl$'); do
+            gh attestation verify "$f" --bundle "$b" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners > /dev/null
             gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/build-binaries.yml" --signer-digest "$RUN_SHA" --source-digest "$RUN_SHA" --deny-self-hosted-runners > /dev/null
             echo "provenance verified: $f"
           done
