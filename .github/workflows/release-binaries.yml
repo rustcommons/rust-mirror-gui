@@ -52,7 +52,7 @@ jobs:
   prepare:
     # Dependabot PRs run only the core checks (org runner budget).
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.check.outputs.tag }}
       ref: ${{ steps.which.outputs.ref }}
@@ -82,7 +82,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"; echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry" >> "$GITHUB_OUTPUT"; echo "pr=$pr" >> "$GITHUB_OUTPUT"
           echo "tag '$tag', ref $ref, dry run: $dry"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.which.outputs.ref }}
           fetch-depth: 0
@@ -150,7 +150,7 @@ jobs:
   publish:
     needs: [prepare, build]
     if: needs.prepare.outputs.dry_run == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -160,11 +160,11 @@ jobs:
       # attestations must be exactly this commit (the tag's, on a tag push).
       RUN_SHA: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-files
           path: dist
