@@ -55,6 +55,18 @@ jobs:
           mkdir dl && cd dl
           gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[]|"\(.name) \(.size)"' | tee ../assets.txt
           gh release download "$TAG" --repo "$REPO"
+          # After 0.5.2, trusted-publishing.yml attaches exactly four crate
+          # files first; its own verify job checks them. Set them aside.
+          version="${TAG#v}"; crates=0
+          if [ "$(printf '%s\n' 0.5.2 "$version" | sort -V | tail -n 1)" != 0.5.2 ]; then
+            mkdir ../crates
+            for f in "$NAME-$version.crate" "$NAME-$version.crates.cdx.json" SHA256SUMS-crates "$NAME-$version.crates.intoto.jsonl"; do
+              [ -f "$f" ] || { echo "::error::$TAG has no $f"; exit 1; }
+              mv "$f" ../crates/
+            done
+            (cd ../crates && sha256sum -c SHA256SUMS-crates)
+            crates=4
+          fi
           cat SHA256SUMS
           sha256sum -c SHA256SUMS
           # 0.4.3 and 0.5.0: 4 archives, signed by release-binaries.yml.
@@ -80,7 +92,7 @@ jobs:
           if [ -z "$bundle" ] && [ "$(printf '%s\n' 0.5.1 "$version" | sort -V | tail -n 1)" != 0.5.1 ]; then
             echo "::error::$TAG has no $NAME-$version.intoto.jsonl"; exit 1
           fi
-          [ "$(wc -l < ../assets.txt)" -eq $((files + 1 + extra)) ] || { echo "::error::expected $files files, SHA256SUMS and $extra bundle file"; exit 1; }
+          [ "$(wc -l < ../assets.txt)" -eq $((files + 1 + extra + crates)) ] || { echo "::error::expected $files files, SHA256SUMS, $extra bundle file and $crates crate files"; exit 1; }
           signed=$(ls | grep -v '\.intoto\.jsonl$')
           for f in $signed; do
             gh attestation verify "$f" --repo "$REPO" --signer-workflow "$REPO/.github/workflows/$signer" $strict >/dev/null
