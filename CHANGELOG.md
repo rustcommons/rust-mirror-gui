@@ -33,6 +33,7 @@
   The tag-bound binary run timed out before the release existed, and the
   binaries were attached by the exact-tag dispatch. The download check now
   defaults to v0.5.2.
+
 ## [0.5.2] - 2026-11-21
 
 Built on rust-mirror 0.6.0, and the first release with a signed provenance
