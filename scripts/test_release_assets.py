@@ -58,6 +58,15 @@ class Layouts(unittest.TestCase):
         lay = ra.layout('0.5.3')
         self.assertEqual(lay['summed'][-2:], [f'{N}-0.5.3.cdx.json', f'{N}-0.5.3.crate'])
 
+    def test_builds_always_have_the_newest_layout(self):
+        # A dry run of an already-released Cargo.toml version (main at 0.5.2) builds the new profile.
+        for v in ('0.5.2', '0.4.0', '0.5.3'):
+            lay = ra.layout(v, build=True)
+            self.assertEqual(lay['summed'], sorted(archives(v) + [f'{N}-{v}.cdx.json', f'{N}-{v}.crate']))
+            self.assertEqual(len(lay['assets']), 8)
+        self.assertEqual(ra.layout('0.5.3', build=True), ra.layout('0.5.3'))
+        self.assertNotEqual(ra.layout('0.5.2', build=True), ra.layout('0.5.2'))
+
     def test_no_downloads_before_043_and_no_odd_versions(self):
         for v in ('0.4.2', '0.1.0', 'v0.5.3', '0.5', '0.5.3-rc.1'):
             with self.assertRaises(ValueError):
@@ -106,6 +115,12 @@ class Files(unittest.TestCase):
         with self.assertRaises(ValueError):
             ra.check_build(self.dir, '0.5.3')
 
+    def test_sums_for_a_dry_run_of_a_released_version(self):
+        lay = ra.layout('0.5.2', build=True)
+        fake_files(self.dir, lay['summed'])
+        ra.write_sums(self.dir, '0.5.2')
+        ra.check_build(self.dir, '0.5.2')
+
     def test_sums_refuses_a_missing_crate_or_an_extra_file(self):
         lay = ra.layout('0.5.3')
         fake_files(self.dir, [n for n in lay['summed'] if not n.endswith('.crate')])
@@ -144,12 +159,16 @@ class FakeGitHub:
     def __init__(self, releases=()):
         self.releases = [dict(r) for r in releases]
         self.calls = []
+        self.others = []
+
+    def listing(self):
+        return self.releases + self.others
 
     def __call__(self, url, method='GET', data=None, content_type=None):
         self.calls.append((method, url))
         base = f'https://api.github.com/repos/{ra.REPO}/releases'
         if method == 'GET' and url.startswith(base + '?'):
-            return self.releases
+            return self.listing()
         if method == 'POST' and url == base:
             body = json.loads(data)
             release = dict(id=7, tag_name=body['tag_name'], name=body['name'], body=body['body'], draft=True,
@@ -162,7 +181,8 @@ class FakeGitHub:
             self.releases[0]['assets'].append(asset)
             return asset
         if method == 'PATCH':
-            self.releases[0]['draft'] = json.loads(data)['draft']
+            self.patch = json.loads(data)
+            self.releases[0]['draft'] = self.patch['draft']
             return self.releases[0]
         if method == 'GET':
             return self.releases[0]
@@ -195,6 +215,25 @@ class Publish(unittest.TestCase):
         methods = [m for m, _ in gh.calls]
         self.assertLess(methods.index('POST'), methods.index('PATCH'))
         self.assertEqual(methods.count('PATCH'), 1)
+
+    def test_latest_only_for_the_highest_version(self):
+        gh = FakeGitHub()
+        gh.others = [dict(tag_name='v0.5.2', draft=False, prerelease=False), dict(tag_name='v0.6.0', draft=True, prerelease=False),
+                     dict(tag_name='v0.7.0-rc.1', draft=False, prerelease=True)]
+        ra.publish_release(self.TAG, self.NOTES, self.dir, gh)
+        self.assertEqual(gh.patch, {'draft': False, 'make_latest': 'true'})
+        gh = FakeGitHub()
+        gh.others = [dict(tag_name='v0.6.0', draft=False, prerelease=False)]
+        ra.publish_release(self.TAG, self.NOTES, self.dir, gh)
+        self.assertEqual(gh.patch, {'draft': False, 'make_latest': 'false'})
+
+    def test_is_highest(self):
+        rel = lambda t, **k: {'tag_name': t, 'draft': False, 'prerelease': False, **k}
+        self.assertTrue(ra.is_highest('v0.5.3', [rel('v0.5.2'), rel('v0.4.10')]))
+        self.assertTrue(ra.is_highest('v0.10.0', [rel('v0.9.9')]))  # numeric, not string order
+        self.assertFalse(ra.is_highest('v0.5.3', [rel('v0.5.10')]))
+        self.assertFalse(ra.is_highest('v0.5.3', [rel('v0.5.3')]))
+        self.assertTrue(ra.is_highest('v0.5.3', [rel('v0.6.0', draft=True), rel('v1.0.0-rc.1', prerelease=True)]))
 
     def test_resumes_a_draft_and_uploads_only_missing_assets(self):
         first = ra.layout('0.5.3')['assets'][0]

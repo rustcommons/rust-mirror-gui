@@ -27,6 +27,16 @@
     only `api.github.com` and `uploads.github.com`.
   - The download check (`verify-release-download.yml`) keeps 0.4.3 to
     0.5.2 exactly as before, and runs on changes to that code.
+  - **Least-privilege hardening:**
+    - `publish` packages and compares the crate before any token exists,
+      and only `cargo publish --locked --no-verify` receives the
+      short-lived token;
+    - the SBOM tool and the crate build run in their own job, not where
+      the downloads are collected and `SHA256SUMS` is written;
+    - fork pull requests skip the signing-capable `build`;
+    - a release is marked latest only if it is the highest version;
+    - the archives' `README.txt` prints the strict `gh attestation verify`
+      command (signer workflow and commit digests).
 
 - **Standard release pipeline** (repository only; no crate or behaviour
   change). `trusted-publishing.yml` now follows the Rust Commons standard,

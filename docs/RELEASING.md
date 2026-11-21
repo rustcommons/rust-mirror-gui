@@ -56,6 +56,10 @@ There is no top-level `attest` job.
      worker must answer protocol 1;
    - **one `SHA256SUMS`** over the `.crate`, the four archives and the
      SBOM.
+
+   The SBOM and the crate are made in their own job. The job that collects
+   the built downloads and writes `SHA256SUMS` runs only this repository's
+   standard-library Python scripts: no toolchain and no third-party tool.
 6. **Build / Checksums and attestations** (nested in `build-binaries.yml`):
    - It runs **only on the v* tag push.** First it re-checks:
      - the tag, the built commit and this run's commit are the same;
@@ -71,13 +75,17 @@ There is no top-level `attest` job.
    Because the signer also ran the build, its signature proves that the
    qualified build produced the bytes. Pull request and manual runs never
    sign. All of this finishes before the owner's approval.
-7. **Owner approval, then publish:** the `crates-io` approval releases a
-   short-lived token. The job:
+7. **Owner approval, then publish** (least privilege for the token). The
+   job:
    - re-checks `SHA256SUMS`;
    - skips a version crates.io already has, but only if that version is
      exactly the attested crate;
-   - otherwise publishes only bytes identical (`cmp`) to the attested
-     `.crate`.
+   - otherwise, **before any token exists**, runs `cargo package --locked
+     --no-verify` and requires the bytes to be identical (`cmp`) to the
+     attested `.crate`. The core already built the packaged source, so no
+     crate build code runs in this job;
+   - only then mints the short-lived token, which only the single step
+     `cargo publish --locked --no-verify` receives.
 8. **GitHub release** (automatic). Before any upload it checks:
    - the exact asset set;
    - every attestation (signer `build-binaries.yml`, source and signer
@@ -90,8 +98,10 @@ There is no top-level `attest` job.
    It then creates `vX.Y.Z` as a **draft** from the committed notes (title =
    the notes' first heading) and checks the draft's tag, title, body and
    state. It uploads all eight assets, checking each one's name, size and
-   digest, and re-reads the draft. Only then does it publish the release
-   (latest) and check it again.
+   digest, and re-reads the draft. Only then does it publish the release and
+   check it again. The release is marked **latest only if its version is
+   above every published release**, so a patch to an older line doesn't
+   become latest.
 9. **Verify publication** (Windows and Linux runners). Each:
    - downloads every asset and checks the digests, `SHA256SUMS`, every
      attestation, the bundle against GitHub's store and the SBOM bindings;
@@ -186,8 +196,11 @@ rust-mirror.
   `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
   `LICENSE-DejaVu.txt` (the built-in font's license, from 0.5.0 on) and
   `README.txt`. `packaging/package.py` makes the archives with fixed
-  timestamps and permissions. `README.txt` states the tag and commit the
-  archive was built from ("Built from"), inside the attested archive.
+  timestamps and permissions. `README.txt`, inside the attested archive:
+  - states the tag and commit the archive was built from ("Built from");
+  - prints the strict verification command: `--signer-workflow
+    …/build-binaries.yml`, `--signer-digest` and `--source-digest` set to
+    that commit, and `--deny-self-hosted-runners`.
 - **How they are built:**
   - Rust 1.95.0 (the MSRV and CI toolchain);
   - `cargo build --release --locked`;
@@ -243,6 +256,14 @@ rust-mirror.
 - **Only `github-release` writes contents.** It has no OIDC permission.
   `publish` has OIDC only for the crates.io token, in the `crates-io`
   environment.
+- **The token sees no build code.** `publish` packages and compares before
+  the crates.io token exists, and only `cargo publish --locked --no-verify`
+  receives it.
+- **No third-party tool next to the payload.** The SBOM tool and the crate
+  build run in their own job, not in the job that collects the downloads
+  and writes `SHA256SUMS`.
+- **Pull requests from forks** don't run `build`, because that reusable call
+  requests `id-token: write`.
 - **Dry runs and the reproducibility check** run the read-only
   `build-binaries-core.yml`. They upload nothing, and their archives'
   `README.txt` says "dry run, not a release".
@@ -250,7 +271,7 @@ rust-mirror.
 
 ### Dry runs
 
-Pull requests that change the app (`src/`, `assets/`, `Cargo.toml`,
+Pull requests from this repository's branches that change the app (`src/`, `assets/`, `Cargo.toml`,
 `Cargo.lock`), the release workflows or scripts, `packaging/`, the launch
 scripts, the CHANGELOG or the release notes run the pipeline's `gate` and the
 full `build` with publish=false:

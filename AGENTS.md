@@ -178,18 +178,27 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
     packages, audits and installs the crate, and writes the SBOM and one
     `SHA256SUMS`. On the tag it signs them before the owner's approval. PR
     dry runs exercise `gate` and the full `build` with publish=false;
-  - only the owner's `crates-io` approval lets `publish` run;
+  - only the owner's `crates-io` approval lets `publish` run. It packages
+    and `cmp`s the crate before any token exists. Only the single step
+    `cargo publish --locked --no-verify` receives the token;
   - `github-release` then creates the GitHub Release as a draft from the
     committed notes, uploads and checks every asset, and publishes it. So
     write the notes in final form before tagging, and **never create the
     release by hand**. After a partial draft use "Re-run failed jobs",
     never "Re-run all jobs" (`docs/RELEASING.md`, manual recovery);
+    the release is marked latest only if it is the highest version;
   - `verify` checks every asset and attestation on Windows and Linux and
     runs the downloaded worker. It also checks crates.io against the
     attested crate and the exact tag source, docs.rs and a clean install.
 
   Nothing waits for a hand-made release any more, so the late-approval
   timeout of 0.5.2 can't recur.
+
+  Keep these least-privilege rules:
+  - no third-party tool runs in a job that holds the build payload and
+    writes `SHA256SUMS`;
+  - fork PRs don't run `build`, which requests `id-token: write`;
+  - the archives' `README.txt` prints the strict verification command.
 - **Updating `CHANGELOG.md` is critical.** It is the source the release
   notes are written from. The release gate refuses to publish without a
   dated `## [X.Y.Z] - YYYY-MM-DD` entry and `docs/releases/vX.Y.Z.md`. Add

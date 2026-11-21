@@ -161,7 +161,7 @@ jobs:
           python3 tools/packaging/package.py --binary "$exe" --license src/LICENSE ${font:+--font-license "$font"} --name "$NAME" \
             --version "$VERSION" --target "${{ matrix.target }}" --out dist \
             --glibc "$GLIBC_MIN" --glibc-built "$GLIBC_BUILT" \
-            --source "$SOURCE_LABEL at commit $(git -C src rev-parse HEAD)"
+            --source "$SOURCE_LABEL at commit $(git -C src rev-parse HEAD)" --commit "$(git -C src rev-parse HEAD)"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-prefix }}dist-${{ matrix.target }}
@@ -233,17 +233,13 @@ jobs:
           name: ${{ inputs.artifact-prefix }}linux-launch-${{ strategy.job-index }}
           path: shots
 
-  checksums:
-    needs: [build, linux-launch]
-    # runs after a passed or skipped launch test, never after a failed one
-    if: always() && needs.build.result == 'success' && (needs.linux-launch.result == 'success' || needs.linux-launch.result == 'skipped')
+  crate:
+    # The SBOM and the crate, in their own job: third-party tools
+    # (cargo-cyclonedx, the crate's build) never run in the job that holds the
+    # built downloads and writes SHA256SUMS.
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: ${{ inputs.artifact-prefix }}dist-*
-          path: dist
-          merge-multiple: true
       - name: Release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,11 +259,13 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
+          set -euo pipefail
+          mkdir out
           cargo install cargo-cyclonedx --version "$CYCLONEDX_VERSION" --locked --root "$RUNNER_TEMP/cdx"
           cd src
           "$RUNNER_TEMP/cdx/bin/cargo-cyclonedx" cyclonedx --format json --spec-version 1.6 --target all --override-filename sbom
           python3 -c "import json; d=json.load(open('sbom.json')); print(d['bomFormat'], d['specVersion'], len(d.get('components', [])), 'components')"
-          mv sbom.json "../dist/$NAME-$VERSION.cdx.json"
+          mv sbom.json "../out/$NAME-$VERSION.cdx.json"
       # After the SBOM: cargo package needs the clean checkout (sbom.json was moved out).
       - name: Package the crate; audit it against the commit
         env:
@@ -277,16 +275,15 @@ jobs:
           cd src
           # Also builds the crate from its packaged source.
           cargo package --locked
-          mkdir "$RUNNER_TEMP/crate"
-          cp "target/package/$NAME-$VERSION.crate" "$RUNNER_TEMP/crate/"
-          python3 ../tools/scripts/release_assets.py audit-crate "$RUNNER_TEMP/crate/$NAME-$VERSION.crate" .
+          cp "target/package/$NAME-$VERSION.crate" ../out/
+          python3 ../tools/scripts/release_assets.py audit-crate "../out/$NAME-$VERSION.crate" .
       - name: Clean locked install of the packaged crate
         if: inputs.crate-install
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          tar -xzf "$RUNNER_TEMP/crate/$NAME-$VERSION.crate" -C "$RUNNER_TEMP"
+          tar -xzf "out/$NAME-$VERSION.crate" -C "$RUNNER_TEMP"
           export CARGO_HOME="$RUNNER_TEMP/package-cargo-home"
           root="$RUNNER_TEMP/package-install"
           cargo install --path "$RUNNER_TEMP/$NAME-$VERSION" --locked --root "$root" -j 2
@@ -294,12 +291,40 @@ jobs:
           # The built-in worker answers protocol 1 with the engine version.
           "$root/bin/$NAME" --worker --version < /dev/null > "$RUNNER_TEMP/version.jsonl"
           head -n1 "$RUNNER_TEMP/version.jsonl" | jq -e '.type == "hello" and .protocol == 1'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-prefix }}crate-and-sbom
+          path: out/*
+          if-no-files-found: error
+
+  checksums:
+    # Only first-party scripts here (Python standard library): no toolchain and
+    # no third-party tool runs next to the downloaded build payload.
+    needs: [build, linux-launch, crate]
+    # runs after a passed or skipped launch test, never after a failed one
+    if: always() && needs.build.result == 'success' && needs.crate.result == 'success' && (needs.linux-launch.result == 'success' || needs.linux-launch.result == 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Release scripts (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tools
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ${{ inputs.artifact-prefix }}dist-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact-prefix }}crate-and-sbom
+          path: dist
       - name: The exact file set and the one SHA256SUMS
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          cp "$RUNNER_TEMP/crate/$NAME-$VERSION.crate" dist/
           python3 tools/scripts/release_assets.py sums dist "$VERSION"
           (cd dist && sha256sum -c SHA256SUMS)
       # The signing job stages the real bundle the same way; here an unsigned

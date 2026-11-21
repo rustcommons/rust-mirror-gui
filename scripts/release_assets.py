@@ -78,14 +78,17 @@ def version_tuple(version):
     return tuple(int(n) for n in m.groups())
 
 
-def layout(version):
-    """The exact asset set of a release of this version."""
+def layout(version, build=False):
+    """The exact asset set of a published release of this version or, with
+    build=True, of what the current pipeline builds (always the newest layout:
+    a dry run of an already-released Cargo.toml version builds it too)."""
     v = version_tuple(version)
-    require(v >= (0, 4, 3), f'{version}: releases before 0.4.3 have no downloads')
+    require(build or v >= (0, 4, 3), f'{version}: releases before 0.4.3 have no downloads')
+    current = build or v > (0, 5, 2)
     archives = sorted(f'{NAME}-{version}-{f}' for f in TARGET_FILES.values())
-    sbom = f'{NAME}-{version}.cdx.json' if v >= (0, 5, 1) else None
-    bundle = f'{NAME}-{version}.intoto.jsonl' if v >= (0, 5, 2) else None
-    crate = f'{NAME}-{version}.crate' if v > (0, 5, 2) else None
+    sbom = f'{NAME}-{version}.cdx.json' if current or v >= (0, 5, 1) else None
+    bundle = f'{NAME}-{version}.intoto.jsonl' if current or v >= (0, 5, 2) else None
+    crate = f'{NAME}-{version}.crate' if current else None
     summed = sorted(archives + [n for n in (sbom, crate) if n])
     signed = summed + ['SHA256SUMS']
     return dict(
@@ -97,8 +100,8 @@ def layout(version):
     )
 
 
-def check_names(version, names, key='assets'):
-    want, got = layout(version)[key], sorted(names)
+def check_names(version, names, key='assets', build=False):
+    want, got = layout(version, build)[key], sorted(names)
     missing, extra = sorted(set(want) - set(got)), sorted(set(got) - set(want))
     require(not missing and not extra and len(got) == len(want),
             f'{version}: expected exactly {want}; missing {missing}, unexpected {extra}')
@@ -109,15 +112,15 @@ def sums_text(folder: Path, names):
 
 
 def write_sums(folder: Path, version):
-    check_names(version, [p.name for p in folder.iterdir()], 'summed')
-    text = sums_text(folder, layout(version)['summed'])
+    check_names(version, [p.name for p in folder.iterdir()], 'summed', build=True)
+    text = sums_text(folder, layout(version, build=True)['summed'])
     (folder / 'SHA256SUMS').write_bytes(text.encode())
     return text
 
 
 def check_build(folder: Path, version):
-    lay = layout(version)
-    check_names(version, [p.name for p in folder.iterdir()], 'signed')
+    lay = layout(version, build=True)
+    check_names(version, [p.name for p in folder.iterdir()], 'signed', build=True)
     require((folder / 'SHA256SUMS').read_bytes().decode() == sums_text(folder, lay['summed']),
             'SHA256SUMS differs from the files')
     return lay
@@ -195,6 +198,13 @@ def check_release_state(release, tag, notes, draft):
     require(release['draft'] is draft and release['prerelease'] is False, 'release draft/prerelease state is not as expected')
 
 
+def is_highest(tag, releases):
+    """True if tag's version is above every other published, non-prerelease release."""
+    mine = version_tuple(tag[1:])
+    published = [r['tag_name'][1:] for r in releases if not r.get('draft') and not r.get('prerelease')]
+    return all(mine > version_tuple(v) for v in published if VERSION.fullmatch(v))
+
+
 def publish_release(tag, notes, folder: Path, call=None):
     """Create or resume the draft release, upload only missing assets, check them, then publish.
 
@@ -208,13 +218,15 @@ def publish_release(tag, notes, folder: Path, call=None):
     files = {p.name: p for p in sorted(folder.iterdir())}
     want = {n: 'sha256:' + digest(p.read_bytes()) for n, p in files.items()}
     sizes = {n: p.stat().st_size for n, p in files.items()}
-    matches, page = [], 1
+    matches, others, page = [], [], 1
     while True:
         batch = call(f'{base}/releases?per_page=100&page={page}')
         matches += [r for r in batch if r['tag_name'] == tag]
+        others += [r for r in batch if r['tag_name'] != tag]
         if len(batch) < 100:
             break
         page += 1
+    latest = is_highest(tag, others)
     require(len(matches) <= 1, 'several releases exist for the tag')
     if matches:
         release = matches[0]
@@ -244,7 +256,10 @@ def publish_release(tag, notes, folder: Path, call=None):
     check_release_state(release, tag, notes, True)
     require({a['name']: (a.get('digest'), a['size']) for a in release['assets']} == {n: (want[n], sizes[n]) for n in want}
             and all(a['state'] == 'uploaded' for a in release['assets']), 'draft assets incomplete before publishing')
-    call(f'{base}/releases/{release["id"]}', 'PATCH', json.dumps({'draft': False, 'make_latest': 'true'}).encode())
+    # "Latest" only for the highest version (a patch to an older line is not latest).
+    call(f'{base}/releases/{release["id"]}', 'PATCH',
+         json.dumps({'draft': False, 'make_latest': 'true' if latest else 'false'}).encode())
+    print('Marked latest' if latest else 'Not marked latest: a higher version is published', flush=True)
     release = call(f'{base}/releases/tags/{tag}')
     check_release_state(release, tag, notes, False)
     require({a['name']: a.get('digest') for a in release['assets']} == want, 'published assets differ')
@@ -308,8 +323,9 @@ def release_command(args):
                                                        f'refs/tags/{tag}^{{}}').splitlines())
     require(live.get(f'refs/tags/{tag}^{{}}', live.get(f'refs/tags/{tag}')) == commit, 'the live tag moved')
     version = tag[1:]
-    lay = layout(version)
-    check_names(version, [p.name for p in folder.iterdir()])
+    lay = layout(version, build=True)
+    require(lay == layout(version), f'{version} is not a version the current pipeline may publish')
+    check_names(version, [p.name for p in folder.iterdir()], build=True)
     stash = Path(tempfile.mkdtemp(prefix='gui-signed-'))
     for n in lay['signed']:
         (stash / n).write_bytes((folder / n).read_bytes())
