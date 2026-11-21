@@ -50,7 +50,10 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 - Publishing crates, binaries or releases requires explicit owner authorization.
   The owner authorized 0.5.1 on 2026-11-16 (the security baseline on main,
   SBOM and SLSA L3 release builds, rust-mirror 0.5.4), published through
-  Trusted Publishing.
+  Trusted Publishing. On 2026-11-21 the owner authorized 0.5.2: rust-mirror
+  0.6.0 (`rust-mirror = "0.6"`, lock refreshed) plus main as it stood (the
+  signed provenance bundle, fuzzing, CI warnings cleared), published through
+  Trusted Publishing; `trusted-publishing.yml` unchanged in this release.
   CI build artifacts for owner trials are allowed.
 - Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
   attaching them from now on, replacing the earlier "notes only" rule. They
