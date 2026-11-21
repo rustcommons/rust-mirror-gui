@@ -36,12 +36,12 @@ jobs:
     container: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
     steps:
       - run: dnf install -y git gcc binutils tar gzip findutils which
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1961bfc0c4a8bf07e0a0c98e1e2459c642ea70a0 # 1.95.0
-        with:
-          toolchain: 1.95.0
+      - name: Rust toolchain in use
+        run: rustc --version && cargo --version
       - name: Build (release, --locked)
         shell: bash
         run: |
@@ -49,7 +49,7 @@ jobs:
           cargo build --release --locked --bin "$NAME"
           mkdir bin && cp "target/release/$NAME" bin/rust-mirror-gui-alma8
           objdump -T bin/rust-mirror-gui-alma8 | grep -oE 'GLIBC_[0-9.]+' | sort -uV | tail -1 | tee bin/rust-mirror-gui-alma8.glibc
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-alma8
           path: bin/
@@ -59,19 +59,19 @@ jobs:
     if: github.actor != 'dependabot[bot]' && (github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments')
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: app
           persist-credentials: false
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: rustcommons/cargo-libc
           ref: ${{ env.CARGO_LIBC_COMMIT }}
           path: cargo-libc
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1961bfc0c4a8bf07e0a0c98e1e2459c642ea70a0 # 1.95.0
-        with:
-          toolchain: 1.95.0
+      - name: Rust toolchain in use
+        run: rustc --version && cargo --version
       - name: cargo-libc 0.7.0 at the pinned commit, Clang 18
         run: |
           test "$(git -C cargo-libc rev-parse HEAD)" = "$CARGO_LIBC_COMMIT"
@@ -100,7 +100,7 @@ jobs:
             fi
           done
           cp versions.txt logs/
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-cargo-libc
           path: |
@@ -128,11 +128,11 @@ jobs:
           - centos:6@sha256:a93df2e96e07f56ea48f215425c6f1673ab922927894595bb5c0ee4c5a955133
           - debian:7@sha256:2259b099d947443e44bbd1c94967c785361af8fd22df48a08a3942e2d5630849
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: qualification
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: bin-*
           path: dl
@@ -154,7 +154,7 @@ jobs:
           python3 qualification/glibc/collect.py work/out "${IMAGE%@*}" "${IMAGE#*@}" "$binaries" result.json
           slug=$(echo "${IMAGE%@*}" | tr ':/' '--'); echo "SLUG=$slug" >> "$GITHUB_ENV"
           mkdir -p "evidence/$slug" && cp result.json "evidence/$slug/" && cp -r work/out "evidence/$slug/out" 2>/dev/null || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: launch-${{ env.SLUG }}
@@ -165,12 +165,12 @@ jobs:
     if: always() && needs.launch.result != 'skipped'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: launch-*
           path: evidence
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bin-cargo-libc
           path: cl
@@ -198,7 +198,7 @@ jobs:
           EOF
         env:
           CARGO_LIBC_COMMIT: ${{ env.CARGO_LIBC_COMMIT }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: glibc-results
           path: results.json

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- **CI warnings cleared** (no change to what is built):
+  - **Node 24:** actions/checkout v7.0.1, upload-artifact v7.0.2,
+    download-artifact v8.0.2 and setup-python v7.1.0, still pinned by
+    commit;
+  - **runner labels:** explicit (`ubuntu-24.04`, `windows-2025`) instead
+    of `-latest`;
+  - **Rust toolchain:** the ignored `toolchain:` inputs are gone; the
+    action is pinned to its `1.95.0` branch, and each job prints
+    `rustc --version`.
 - **Signed provenance on each release** (from the next release on): the
   release also gets `rust-mirror-gui-X.Y.Z.intoto.jsonl`, the Sigstore
   bundle of its build-provenance attestation (JSON Lines; the same design

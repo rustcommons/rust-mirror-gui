@@ -30,7 +30,7 @@ jobs:
   assets:
     # Dependabot PRs run only the core checks (org runner budget).
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The SHA-256 of each archive, from SHA256SUMS after its attestation
     # verified: the run jobs check their download against these before
     # running anything.
@@ -42,7 +42,7 @@ jobs:
       attestations: read
     steps:
       - name: Bundle script (this workflow's commit)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
           sparse-checkout: scripts
@@ -125,7 +125,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Capture script (this workflow's commit)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: qualification
           persist-credentials: false
@@ -157,7 +157,7 @@ jobs:
           $out
           if (-not ($out -match '"protocol":1')) { throw "worker did not report protocol 1" }
           ./qualification/capture-window.ps1 -Exe $exe -Out shots\window.png
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: windows-window
@@ -186,7 +186,7 @@ jobs:
               xvfb x11-utils python3 curl ca-certificates
           fi
       - name: Launch scripts (this workflow's commit)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
           sparse-checkout: qualification
@@ -215,7 +215,7 @@ jobs:
           "$exe" --worker --version < /dev/null | tee worker.txt
           grep -q '"protocol":1' worker.txt
           sh tools/qualification/linux-launch.sh "$exe" shots
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linux-window-${{ strategy.job-index }}

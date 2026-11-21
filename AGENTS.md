@@ -89,6 +89,19 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   runs, reproducibility, qualifications, glibc experiments, download
   checks) carry `if: github.actor != 'dependabot[bot]'`. Keep both when
   adding a workflow.
+- **Runner images are explicit:** `ubuntu-24.04`, `ubuntu-22.04` (the
+  AlmaLinux 8 container host), `windows-2025`, `windows-2022`, `macos-15`
+  and `macos-15-intel`. Never use a moving label such as `ubuntu-latest`.
+  Moving to Ubuntu 26.04 (or any newer image) is a deliberate change, made
+  in its own PR with a green release dry run.
+- **Actions run on Node 24:** checkout v7, upload-artifact v7,
+  download-artifact v8 (a digest mismatch fails the download), setup-python
+  v7.
+- **Rust toolchain action:** `dtolnay/rust-toolchain` is pinned to the head
+  commit of its `1.95.0` branch, which fixes the toolchain itself. Don't
+  pass a `toolchain:` input; the action ignores it ("Unexpected input"). Each
+  job prints `rustc --version`. To change Rust, re-pin to the new
+  version's branch head.
 - **Least privilege:** every workflow's top-level `permissions` is read-only;
   a job that needs more asks for it itself (`contents: write` only to upload
   release assets; `id-token`/`attestations: write` only where it signs or

@@ -23,7 +23,7 @@ jobs:
   fuzz:
     # Dependabot PRs run only the core checks (org runner budget).
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       security-events: write # upload crash SARIF to code scanning
