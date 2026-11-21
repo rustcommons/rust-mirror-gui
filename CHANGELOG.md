@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+- **Release pipeline, phase 2** (repository only; no crate or behaviour
+  change). `trusted-publishing.yml`'s `build` now calls the reusable
+  `build-binaries.yml`. It builds the crate and the four downloads with
+  every existing qualification gate, writes one SBOM and one `SHA256SUMS`,
+  and signs them, on the tag only, in its nested "Checksums and
+  attestations" job.
+  - `github-release` checks every attestation, the bundle and the SBOM
+    bindings, creates the release as a draft from the committed notes,
+    uploads every asset with name, size and digest checks, and only then
+    publishes it.
+  - `verify` checks every asset on Windows and Linux and runs the
+    downloaded worker.
+  - From the release after 0.5.2, the assets are:
+    - `rust-mirror-gui-X.Y.Z.crate`;
+    - the four archives;
+    - `rust-mirror-gui-X.Y.Z.cdx.json`;
+    - one `SHA256SUMS` (the crate, the archives and the SBOM);
+    - `rust-mirror-gui-X.Y.Z.intoto.jsonl`.
+  - `release-binaries.yml` is retired, so a late crates.io approval no
+    longer leaves the downloads behind.
+  - The release-asset code moved into `scripts/release_assets.py`, with
+    tests for the old and the new layouts. Its GitHub API helper accepts
+    only `api.github.com` and `uploads.github.com`.
+  - The download check (`verify-release-download.yml`) keeps 0.4.3 to
+    0.5.2 exactly as before, and runs on changes to that code.
+
 - **Standard release pipeline** (repository only; no crate or behaviour
   change). `trusted-publishing.yml` now follows the Rust Commons standard,
   with the jobs `gate`, `build`, `attest`, `publish`, `github-release` and

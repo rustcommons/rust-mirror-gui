@@ -56,20 +56,28 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   Trusted Publishing; `trusted-publishing.yml` unchanged in this release.
   CI build artifacts for owner trials are allowed.
 - Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
-  attaching them from now on, replacing the earlier "notes only" rule. They
-  are produced only by `.github/workflows/release-binaries.yml`, which:
+  attaching them from now on, replacing the earlier "notes only" rule.
+  Since phase 2 of the standard pipeline (2026-11-21) they are produced
+  only by `trusted-publishing.yml` (through `build-binaries.yml`), which:
   - builds from exactly the tagged commit with `--locked`;
   - produces unsigned archives (no paid code signing), with `SHA256SUMS` and
     GitHub artifact attestations;
-  - uploads only to the existing release for that tag;
-  - never replaces or deletes a published asset.
+  - creates the release as a draft from the committed notes and publishes
+    it only when every asset is checked;
+  - never replaces or deletes an asset, and never modifies a published
+    release.
 
-  On 2026-11-21 the owner also authorized the release pipeline to attach
-  the published `.crate` file, the crate CycloneDX SBOM
-  (`rust-mirror-gui-<version>.crates.cdx.json`), `SHA256SUMS-crates` and
-  the `rust-mirror-gui-<version>.crates.intoto.jsonl` provenance bundle,
-  and nothing else. Together with the binary assets, attach no other
-  distribution artifacts without further authorization.
+  On 2026-11-21 the owner also authorized attaching the published `.crate`.
+  From the release after 0.5.2, the assets are exactly:
+  - the `.crate`;
+  - the four archives;
+  - the SBOM `rust-mirror-gui-<version>.cdx.json`;
+  - one `SHA256SUMS`;
+  - one `rust-mirror-gui-<version>.intoto.jsonl`.
+
+  Attach no other distribution artifacts without further authorization.
+  `release-binaries.yml` is retired; releases up to 0.5.2 keep their
+  layouts.
 
   See [docs/RELEASING.md](docs/RELEASING.md).
   Do not publish placeholder crates to reserve names.
@@ -124,14 +132,24 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   A new dependency's license must already be on the allowlist, or the owner
   must approve adding it.
 - **Release builds** run only in the reusable `build-binaries-core.yml`
-  (read-only; also used by dry runs). For a release, `build-binaries.yml`
-  runs it and then signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
+  (read-only; also used by dry runs). It builds the crate and the four
+  binaries with every qualification gate. `build-binaries.yml` runs it and,
+  only on the exact v* tag push, signs provenance and the SBOM in its own
+  "Checksums and attestations" job (SLSA Build L3). `reproducible-build.yml`
   compares two independent builds weekly.
 - **Signed releases:** from 0.5.2 on, every release also carries
   `<name>-<version>.intoto.jsonl` (name shared with rust-mirror), the
-  Sigstore bundles from `build-binaries.yml`'s attest job. It isn't in
-  `SHA256SUMS`, and is checked against GitHub's stored attestations before
-  and after upload. Never replace it or build it by hand.
+  Sigstore bundles from that signing job. It isn't in `SHA256SUMS`, and it
+  is checked against GitHub's stored attestations before upload and on the
+  published release. Never replace it or build it by hand.
+- **Release-asset code:** `scripts/release_assets.py` holds:
+  - the exact layout of every release version (old ones unchanged);
+  - the draft-release flow;
+  - the public verification.
+
+  Its GitHub API helper talks only to `api.github.com` and
+  `uploads.github.com`. Change it together with its tests
+  (`scripts/test_release_assets.py`).
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
 - **Trusted Publishing** is the only way to publish to crates.io (since
   2026-11-16; no API token exists any more). Never ask anyone to publish
@@ -139,10 +157,11 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 - **Standard release pipeline** (owner-approved 2026-11-21):
   `trusted-publishing.yml` is the Rust Commons
   [standard pipeline](https://github.com/rustcommons/.github/blob/main/docs/TRUSTED-PUBLISHING.md),
-  workflow `Trusted publishing`, with these jobs:
+  in its form for repositories that also ship binaries (phase 2,
+  2026-11-21), workflow `Trusted publishing`, with these jobs:
   - `gate` (Release gate);
-  - `build` (Build);
-  - `attest` (Checksums and attestations);
+  - `build` (Build): `uses: build-binaries.yml`, whose nested job
+    "Checksums and attestations" signs. There is no top-level `attest`;
   - `publish` (Publish to crates.io);
   - `github-release` (GitHub release);
   - `verify` (Verify publication).
@@ -155,20 +174,22 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   - `gate` also keeps this repository's guards: the tag equals `Cargo.toml`
     and is on main, and the workspace is exactly the `rust-mirror-gui`
     crate;
-  - `build` makes the crate SBOM, packages, audits the package against the
-    commit, installs the packaged crate and writes `SHA256SUMS-crates`; PR
-    dry runs exercise `gate` and `build` with publish=false;
+  - `build` builds the four binaries with every qualification gate,
+    packages, audits and installs the crate, and writes the SBOM and one
+    `SHA256SUMS`. On the tag it signs them before the owner's approval. PR
+    dry runs exercise `gate` and the full `build` with publish=false;
   - only the owner's `crates-io` approval lets `publish` run;
-  - `github-release` then creates the GitHub Release from the committed
-    notes. So write the notes in final form before tagging, and **never
-    create the release by hand**;
-  - `verify` checks crates.io against the attested crate and the exact tag
-    source, the attestations, docs.rs and a clean install.
+  - `github-release` then creates the GitHub Release as a draft from the
+    committed notes, uploads and checks every asset, and publishes it. So
+    write the notes in final form before tagging, and **never create the
+    release by hand**. After a partial draft use "Re-run failed jobs",
+    never "Re-run all jobs" (`docs/RELEASING.md`, manual recovery);
+  - `verify` checks every asset and attestation on Windows and Linux and
+    runs the downloaded worker. It also checks crates.io against the
+    attested crate and the exact tag source, docs.rs and a clean install.
 
-  Binaries stay in `release-binaries.yml`, which attaches its own files to
-  that release. If approval takes longer than its 30-minute wait, use the
-  exact-tag dispatch in `docs/RELEASING.md`. Folding the binaries in is
-  phase 2 in [the roadmap](docs/ROADMAP.md#standard-release-pipeline).
+  Nothing waits for a hand-made release any more, so the late-approval
+  timeout of 0.5.2 can't recur.
 - **Updating `CHANGELOG.md` is critical.** It is the source the release
   notes are written from. The release gate refuses to publish without a
   dated `## [X.Y.Z] - YYYY-MM-DD` entry and `docs/releases/vX.Y.Z.md`. Add
@@ -215,7 +236,7 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
 
 - For a repository that ships versioned software, maintain a root `CHANGELOG.md` with an `Unreleased` section and dated, user-facing entries for shipped versions. Record noteworthy changes and their user impact as work is completed; do not substitute a roadmap, Git tag, CI log or validation report for a changelog.
 - Before publishing a version, commit its release notes under `docs/releases/vX.Y.Z.md` and link them, the changelog, and the maintained release policy. Explain changes, upgrade or dependency impact, validation and known limits; distinguish software changes from documentation-only releases.
-- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release. Prebuilt binaries are authorized (2026-11-15) only through the release-binaries workflow and its reusable build-binaries.yml (see docs/RELEASING.md); do not attach other new distribution artifacts without authorization.
+- A software release is not complete until its immutable source tag, applicable registry archives, GitHub Release notes, changelog, documentation, and required verification agree. GitHub Releases document the release. Prebuilt binaries (authorized 2026-11-15) and the published `.crate` (authorized 2026-11-21) are attached only by trusted-publishing.yml through its reusable build-binaries.yml (see docs/RELEASING.md); do not attach other new distribution artifacts without authorization.
 - Run the repository's release-documentation CI check before routine merges and release completion. For its first installation, review local checker/syntax evidence, register the workflow on the default branch, and require a green run before completing bootstrap or publishing notes. Verify the live GitHub Release and its tag, text and links after publication; a successful crate upload or tag alone is insufficient.
 - When backfilling history, reconstruct facts from existing tags, registry records and source/evidence. Preserve original source identities, distinguish original release dates from documentation backfill dates, and state unavailable historical validation. Never fabricate checks, move tags, republish versions, or imply that repository edits change immutable published archives.
 - For an organization profile, placeholder or project with no shipped version, record release verification as not applicable until its first authorized release. Do not invent versions, features, changelog history or GitHub Releases to satisfy this convention.

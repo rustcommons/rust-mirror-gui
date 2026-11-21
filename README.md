@@ -94,6 +94,8 @@ from 0.4.3 on has ready-to-run archives:
 
 From 0.5.1 on, each release also has `rust-mirror-gui-<version>.cdx.json`, a
 CycloneDX SBOM listing every dependency built into the program.
+From the release after 0.5.2, it also has `rust-mirror-gui-<version>.crate`,
+the crate exactly as published to crates.io, which `SHA256SUMS` lists too.
 
 Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
 the folder. No separate rust-mirror installation is needed. On Windows, no
@@ -124,7 +126,8 @@ gh attestation verify rust-mirror-gui-0.5.2-x86_64-unknown-linux-gnu.tar.gz \
   --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
 ```
 
-For 0.4.3 and 0.5.0, use `release-binaries.yml` as the signer workflow.
+For 0.4.3 and 0.5.0, use `release-binaries.yml` (since retired) as the
+signer workflow; their attestations name it.
 
 **Offline, from 0.5.2 on:** each release also has
 `rust-mirror-gui-<version>.intoto.jsonl`, with the signed build-provenance
