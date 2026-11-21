@@ -117,6 +117,11 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   (read-only; also used by dry runs). For a release, `build-binaries.yml`
   runs it and then signs provenance and the SBOM (SLSA Build L3). `reproducible-build.yml`
   compares two independent builds weekly.
+- **Signed releases:** from 0.5.2 on, every release also carries
+  `<name>-<version>.intoto.jsonl` (name shared with rust-mirror), the
+  Sigstore bundles from `build-binaries.yml`'s attest job. It isn't in
+  `SHA256SUMS`, and is checked against GitHub's stored attestations before
+  and after upload. Never replace it or build it by hand.
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
 - **Trusted Publishing** is the only way to publish to crates.io (since
   2026-11-16; no API token exists any more). A `v*` tag push runs

@@ -54,14 +54,41 @@ jobs:
         with:
           name: release-files
           path: dist
+      - name: Bundle script (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tools
+          sparse-checkout: scripts
+          persist-credentials: false
       - name: Attest build provenance (every file)
+        id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
       - name: Attest the SBOM (each archive)
+        id: sbom
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: |
             dist/*.zip
             dist/*.tar.gz
           sbom-path: dist/${{ env.NAME }}-${{ inputs.version }}.cdx.json
+      - name: Provenance bundle file for the release (<name>-<version>.intoto.jsonl)
+        # The signed Sigstore bundle of the build-provenance attestation, one
+        # per line, so the release itself carries its provenance (Scorecard
+        # Signed-Releases; offline `gh attestation verify --bundle`). Same
+        # design as rust-mirror. Not in SHA256SUMS: it is signed itself, and
+        # SHA256SUMS is one of its subjects. Its subjects must be exactly the
+        # release files: the archives, the SBOM and SHA256SUMS.
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          mkdir bundle
+          out="bundle/$NAME-$VERSION.intoto.jsonl"
+          python3 tools/scripts/provenance_bundle.py assemble "$out" "$PROVENANCE_BUNDLE"
+          python3 tools/scripts/provenance_bundle.py check "$out" dist/*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-provenance
+          path: bundle/*
+          if-no-files-found: error

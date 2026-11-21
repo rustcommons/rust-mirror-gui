@@ -11,6 +11,16 @@
   - **Rust toolchain:** the ignored `toolchain:` inputs are gone; the
     action is pinned to its `1.95.0` branch, and each job prints
     `rustc --version`.
+- **Signed provenance on each release** (from the next release on): the
+  release also gets `rust-mirror-gui-X.Y.Z.intoto.jsonl`, the Sigstore
+  bundle of its build-provenance attestation (JSON Lines; the same design
+  as rust-mirror).
+  - Scorecard's Signed-Releases check recognizes it.
+  - Users can verify offline with `gh attestation verify --bundle`.
+  - The release and download checks confirm its subjects are exactly the
+    release files and that it matches GitHub's stored attestation.
+
+  It is not in `SHA256SUMS`. Existing releases are unchanged.
 
 - **Fuzzing:**
   - four cargo-fuzz targets in `fuzz/`: worker event lines, the whole event
