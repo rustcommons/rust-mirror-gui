@@ -11,50 +11,108 @@ revoked the last one), so nobody publishes from a personal machine.
 
 ## Steps
 
-1. **Release PR (maintainer):**
+The crate is released by the Rust Commons
+[standard release pipeline](https://github.com/rustcommons/.github/blob/main/docs/TRUSTED-PUBLISHING.md)
+(owner-approved 2026-11-21):
+[`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml),
+workflow "Trusted publishing", with six jobs: `gate`, `build`, `attest`,
+`publish`, `github-release` and `verify`. The binaries are still built by
+[`release-binaries.yml`](../.github/workflows/release-binaries.yml) on the same
+tag (see [Prebuilt binaries](#prebuilt-binaries)).
+
+1. **Release PR (maintainer).** It contains:
    - the version in `Cargo.toml`;
-   - a dated `CHANGELOG.md` entry;
-   - `docs/releases/vX.Y.Z.md`;
+   - the `Unreleased` CHANGELOG entries moved under a dated
+     `## [X.Y.Z] - YYYY-MM-DD` heading;
+   - `docs/releases/vX.Y.Z.md` in final form (the GitHub Release body is
+     exactly this file, and its first heading is the title);
    - evidence under `docs/evals/`.
 
    CI must be green at the exact head: the release-documentation check, and
    the release dry run (all builds, the old-Linux launches without system
    fonts, the Windows capture). Before a release PR merges, also run the
    reproducible-build check on it.
-2. **Merge** (coordinator, owner-authorized): merge normally.
-3. **Tag and release notes (maintainer), together:**
-   - create the annotated tag `vX.Y.Z` on the merge and push it;
-   - right away, create the GitHub Release whose body is exactly
-     `docs/releases/vX.Y.Z.md`.
+2. **Merge** (coordinator, owner-authorized): merge normally, and wait for CI
+   on the merge commit to pass.
+3. **Tag (maintainer):** push an annotated tag `vX.Y.Z` on the merge. **Do
+   not create the GitHub Release by hand**: the pipeline creates it.
+4. **The tag push runs `trusted-publishing.yml`:**
+   - **Release gate:** refuses the run unless
+     - the tag is annotated and names the `Cargo.toml` version;
+     - the commit is on `main` with a successful CI run;
+     - `CHANGELOG.md` has the dated entry and `docs/releases/vX.Y.Z.md`
+       exists;
+     - the release-documentation check passes;
+     - the workspace is exactly the `rust-mirror-gui` crate.
+   - **Build:**
+     - the crate SBOM `rust-mirror-gui-X.Y.Z.crates.cdx.json`
+       (cargo-cyclonedx 0.5.10, from the clean checkout);
+     - `cargo package --locked`, which also builds the packaged source;
+     - a package audit: regular files only, every file equal to the commit,
+       a clean VCS record, and no `fuzz/`, CI, `docs/` or `qualification/`
+       content;
+     - a clean `cargo install --locked` of the packaged crate, whose
+       built-in worker must answer protocol 1;
+     - `SHA256SUMS-crates`.
+   - **Checksums and attestations:** SLSA provenance for the `.crate` and
+     the crate SBOM, saved as `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl`.
+   - **Publish to crates.io:** waits for the owner's approval of the
+     `crates-io` environment. It then:
+     - skips a version crates.io already has, but only if that version is
+       exactly the attested crate;
+     - otherwise publishes with a short-lived token, and only bytes
+       identical (`cmp`) to the attested `.crate`.
+   - **GitHub release:** creates `vX.Y.Z` with `--verify-tag` from the
+     committed notes and attaches the `.crate`, the crate SBOM,
+     `SHA256SUMS-crates` and the crate bundle. A re-run uploads only missing
+     files.
+   - **Verify publication:**
+     - the live body equals the notes;
+     - the crates.io API, the index and the archive agree with the attested
+       `.crate`;
+     - the archive's VCS record is the tag's commit and every file equals the
+       tag;
+     - `gh attestation verify --bundle` passes for the crate and its SBOM;
+     - docs.rs has built it (still pending after 20 minutes is reported as
+       pending, not as a pass);
+     - a clean `cargo install --locked` from crates.io works.
 
-   The tag push starts two workflows:
-   - [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml)
-     waits for the owner to approve the `crates-io` environment, runs
-     `cargo publish --locked`, then checks that the published crate is the
-     tag's source (checksums, `.cargo_vcs_info.json`, every file);
-   - [`release-binaries.yml`](../.github/workflows/release-binaries.yml)
-     waits up to 30 minutes for the GitHub Release, has the reusable
-     [`build-binaries.yml`](../.github/workflows/build-binaries.yml) build
-     them (with
-     [`build-binaries-core.yml`](../.github/workflows/build-binaries-core.yml))
-     and sign them, then attaches the binaries described below.
+   Pull requests that change the pipeline, the release scripts, the
+   CHANGELOG or the release notes run `gate` and `build` as a dry run with
+   publish=false.
+5. **Binaries:** the same tag push runs `release-binaries.yml`. It waits up
+   to 30 minutes for the GitHub Release, which `github-release` now creates
+   after the owner approves publishing. It then attaches the archives, the
+   binaries' SBOM, `SHA256SUMS` and `rust-mirror-gui-X.Y.Z.intoto.jsonl`.
 
-   Create the release promptly: only the tag-push run produces attestations
-   whose source and signer are the release commit. A later manual run is
-   signed at another commit and fails the strict verification.
-4. **Post-publication (maintainer)**, once both runs succeeded:
-   - verify the registry archive against the merge;
-   - verify docs.rs and a fresh `cargo install --locked`;
-   - verify the live assets, `SHA256SUMS` and every attestation (signer
+   Its uploader accepts a release that already holds exactly the four crate
+   files, and refuses any other existing asset.
+
+   **If the approval comes more than 30 minutes after the tag** (as for
+   0.5.2), the tag run times out in `prepare`. It uploads nothing and signs
+   nothing. Then dispatch it on the tag ref:
+
+   ```sh
+   gh workflow run release-binaries.yml --ref vX.Y.Z -f tag=vX.Y.Z -f dry_run=false
+   ```
+
+   Never dispatch from another ref, because the signer and source digests
+   must be the release commit. Phase 2 removes this wait (see the
+   [roadmap](ROADMAP.md#standard-release-pipeline)).
+6. **Post-publication (maintainer)**, once both workflows succeeded:
+   - verify the binary assets, `SHA256SUMS` and every attestation (signer
      `build-binaries.yml`, source and signer digest = the release commit,
-     SBOM bindings);
-   - run the release-documentation checks;
-   - open a publication-record PR.
-5. **Downloads, as a user gets them:** run
-   [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
-   (Actions → Verify release downloads, `tag`). It downloads the live assets,
-   checks `SHA256SUMS` and the attestations, and runs the Windows and Linux
-   archives. It is read-only. Record its run too.
+     SBOM bindings, the bundle);
+   - run
+     [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
+     (Actions → Verify release downloads, `tag`). It downloads the live
+     binary assets, checks `SHA256SUMS` and the attestations, and runs the
+     Windows and Linux archives. It is read-only;
+   - open a publication-record PR citing both runs.
+
+Releases up to 0.5.2 were published by the earlier `check`/`publish`/`verify`
+workflow, and their GitHub Releases were created by hand. They keep their
+existing assets; none is re-tagged or re-released.
 
 ## Prebuilt binaries
 
@@ -73,6 +131,7 @@ asset names and archive layout are shared with rust-mirror.
 | `rust-mirror-gui-X.Y.Z.cdx.json` | the release's CycloneDX SBOM (from 0.5.1 on; name shared with rust-mirror): `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
 | `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name; the archives and, from 0.5.1 on, the SBOM |
 | `rust-mirror-gui-X.Y.Z.intoto.jsonl` | from 0.5.2 on (name shared with rust-mirror): the release's signed provenance, made by `build-binaries.yml`. JSON Lines, one Sigstore bundle per line: the SLSA build-provenance attestation, whose subjects are exactly the archives, the SBOM and `SHA256SUMS`. The SBOM attestation stays in GitHub's store. Scorecard's Signed-Releases check recognizes it, and users verify offline with it. **Not in `SHA256SUMS`:** it is signed itself, it is made after `SHA256SUMS` is signed, and `SHA256SUMS` is one of its subjects |
+| `rust-mirror-gui-X.Y.Z.crate`, `rust-mirror-gui-X.Y.Z.crates.cdx.json`, `SHA256SUMS-crates`, `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl` | after 0.5.2: the published crate, its SBOM, their checksums and their provenance bundle, attached by `trusted-publishing.yml`'s `github-release` job before the binaries (owner authorization 2026-11-21). The binary workflows leave them alone, and `verify-release-download.yml` requires exactly these four |
 
 - **Archive layout:** each archive holds one folder,
   `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
