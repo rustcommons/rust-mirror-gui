@@ -299,5 +299,26 @@ class Verify(unittest.TestCase):
             ra.verify_command(args, self.live('0.5.3', ra.layout('0.5.3')['assets'], draft=True))
 
 
+class ReadmeCommand(unittest.TestCase):
+    """The archive README's verify command must be exactly the verifier's strict policy."""
+
+    def test_package_readme_command_equals_the_verifier_policy(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('package', Path(__file__).resolve().parent.parent / 'packaging' / 'package.py')
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        commit = 'a' * 40
+        want = ra.policy(ra.layout('0.5.3', build=True), commit)
+        for family, archive in (('linux', 'x.tar.gz'), ('macos', 'x.tar.gz'), ('windows', 'x.zip')):
+            words = package.verify_command(archive, commit, family).replace('`', ' ').replace('\\', ' ').split()
+            self.assertEqual(words[:4], ['gh', 'attestation', 'verify', archive])
+            got = words[4:]
+            pairs = lambda flags: sorted(zip(*[iter(f for f in flags if f != '--deny-self-hosted-runners')] * 2))
+            with self.subTest(family=family):
+                self.assertEqual(pairs(got), pairs(want))
+                self.assertEqual(got.count('--deny-self-hosted-runners'), want.count('--deny-self-hosted-runners'))
+                self.assertEqual(len(got), len(want))
+
+
 if __name__ == '__main__':
     unittest.main()
