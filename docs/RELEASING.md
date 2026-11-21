@@ -72,6 +72,7 @@ asset names and archive layout are shared with rust-mirror.
 | `rust-mirror-gui-X.Y.Z-x86_64-apple-darwin.tar.gz` | `macos-15-intel` (macOS 11 or newer) |
 | `rust-mirror-gui-X.Y.Z.cdx.json` | the release's CycloneDX SBOM (from 0.5.1 on; name shared with rust-mirror): `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
 | `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name; the archives and, from 0.5.1 on, the SBOM |
+| `rust-mirror-gui-X.Y.Z.intoto.jsonl` | from 0.5.2 on (name shared with rust-mirror): the release's signed provenance, made by `build-binaries.yml`. JSON Lines, one Sigstore bundle per line: the SLSA build-provenance attestation, whose subjects are exactly the archives, the SBOM and `SHA256SUMS`. The SBOM attestation stays in GitHub's store. Scorecard's Signed-Releases check recognizes it, and users verify offline with it. **Not in `SHA256SUMS`:** it is signed itself, it is made after `SHA256SUMS` is signed, and `SHA256SUMS` is one of its subjects |
 
 - **Archive layout:** each archive holds one folder,
   `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
@@ -124,6 +125,22 @@ asset names and archive layout are shared with rust-mirror.
   from a GitHub-hosted runner (`--deny-self-hosted-runners`). So the same
   workflow path at another commit does not pass. For the SBOM attestation
   they also check that the attested SBOM is exactly the published file.
+- **Provenance on the release itself (from 0.5.2 on):** the attest job in
+  `build-binaries.yml` writes the provenance attestation's Sigstore bundle
+  into
+  `rust-mirror-gui-X.Y.Z.intoto.jsonl` (`scripts/provenance_bundle.py
+  assemble`). The publish job, the only one that can write contents,
+  checks three things before uploading it with the other assets:
+  - its subjects are exactly the release files (`check`);
+  - every file verifies offline against it (`gh attestation verify
+    --bundle`);
+  - its bundle is exactly GitHub's stored provenance attestation
+    (`match`).
+
+  After the upload it compares the live copy. `verify-release-download.yml`
+  repeats these checks. For releases without the file, it builds one from
+  the stored attestations, so every run exercises this path; dry runs can't
+  sign anything.
 
   0.4.3 and 0.5.0 were signed by `release-binaries.yml` itself (use that
   file name as the signer) and have no SBOM.

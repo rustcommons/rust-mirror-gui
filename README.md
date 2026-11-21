@@ -125,6 +125,28 @@ gh attestation verify rust-mirror-gui-0.5.1-x86_64-unknown-linux-gnu.tar.gz \
 
 For 0.4.3 and 0.5.0, use `release-binaries.yml` as the signer workflow.
 
+**Offline, from 0.5.2 on:** each release also has
+`rust-mirror-gui-<version>.intoto.jsonl`, with the signed build-provenance
+attestation (a Sigstore bundle). Download it next to the archive, then verify without
+contacting GitHub's attestation store:
+
+```sh
+gh attestation verify rust-mirror-gui-<version>-x86_64-unknown-linux-gnu.tar.gz \
+  --bundle rust-mirror-gui-<version>.intoto.jsonl \
+  --repo rustcommons/rust-mirror-gui \
+  --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
+```
+
+`--bundle` means `gh` doesn't ask GitHub for the attestations, but it still
+downloads Sigstore's trust root. On a machine with no network at all:
+1. on a connected machine, run
+   `gh attestation trusted-root > trusted_root.jsonl`;
+2. copy that file across with the archive and the bundle;
+3. add `--custom-trusted-root trusted_root.jsonl` to the command above.
+
+The bundle file isn't listed in `SHA256SUMS`: it carries its own
+signatures.
+
 **The binaries are not code-signed**, so your system may warn the first time:
 
 - **Windows:** SmartScreen may say "Windows protected your PC". After checking
