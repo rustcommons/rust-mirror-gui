@@ -64,6 +64,13 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   - uploads only to the existing release for that tag;
   - never replaces or deletes a published asset.
 
+  On 2026-11-21 the owner also authorized the release pipeline to attach
+  the published `.crate` file, the crate CycloneDX SBOM
+  (`rust-mirror-gui-<version>.crates.cdx.json`), `SHA256SUMS-crates` and
+  the `rust-mirror-gui-<version>.crates.intoto.jsonl` provenance bundle,
+  and nothing else. Together with the binary assets, attach no other
+  distribution artifacts without further authorization.
+
   See [docs/RELEASING.md](docs/RELEASING.md).
   Do not publish placeholder crates to reserve names.
 - On 2026-11-15 the owner authorized publishing 0.4.3 (the wgpu limits fix)
@@ -127,10 +134,46 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   and after upload. Never replace it or build it by hand.
 - **OpenSSF Scorecard** (`scorecard.yml`) runs on `main` and weekly.
 - **Trusted Publishing** is the only way to publish to crates.io (since
-  2026-11-16; no API token exists any more). A `v*` tag push runs
-  `trusted-publishing.yml`, which waits for the owner's approval of the
-  `crates-io` environment. Never ask anyone to publish from a machine; see
-  `docs/RELEASING.md`.
+  2026-11-16; no API token exists any more). Never ask anyone to publish
+  from a machine; see `docs/RELEASING.md`.
+- **Standard release pipeline** (owner-approved 2026-11-21):
+  `trusted-publishing.yml` is the Rust Commons
+  [standard pipeline](https://github.com/rustcommons/.github/blob/main/docs/TRUSTED-PUBLISHING.md),
+  workflow `Trusted publishing`, with these jobs:
+  - `gate` (Release gate);
+  - `build` (Build);
+  - `attest` (Checksums and attestations);
+  - `publish` (Publish to crates.io);
+  - `github-release` (GitHub release);
+  - `verify` (Verify publication).
+
+  Keep the job ids, display names, order, conditions and per-job
+  permissions in step with the standard. Never rename the file or the
+  `crates-io` environment.
+
+  An annotated `vX.Y.Z` tag on a `main` commit with green CI starts it:
+  - `gate` also keeps this repository's guards: the tag equals `Cargo.toml`
+    and is on main, and the workspace is exactly the `rust-mirror-gui`
+    crate;
+  - `build` makes the crate SBOM, packages, audits the package against the
+    commit, installs the packaged crate and writes `SHA256SUMS-crates`; PR
+    dry runs exercise `gate` and `build` with publish=false;
+  - only the owner's `crates-io` approval lets `publish` run;
+  - `github-release` then creates the GitHub Release from the committed
+    notes. So write the notes in final form before tagging, and **never
+    create the release by hand**;
+  - `verify` checks crates.io against the attested crate and the exact tag
+    source, the attestations, docs.rs and a clean install.
+
+  Binaries stay in `release-binaries.yml`, which attaches its own files to
+  that release. If approval takes longer than its 30-minute wait, use the
+  exact-tag dispatch in `docs/RELEASING.md`. Folding the binaries in is
+  phase 2 in [the roadmap](docs/ROADMAP.md#standard-release-pipeline).
+- **Updating `CHANGELOG.md` is critical.** It is the source the release
+  notes are written from. The release gate refuses to publish without a
+  dated `## [X.Y.Z] - YYYY-MM-DD` entry and `docs/releases/vX.Y.Z.md`. Add
+  an `Unreleased` entry in the same PR as each noteworthy change, never
+  later; a release PR only dates and moves those entries.
 - **Never skip CI** (owner rule, 2026-11-17): no `[skip ci]`, `[ci skip]` or
   similar in commit or merge messages. They skip CodeQL and CI, which lowers
   Scorecard's SAST and CI-Tests.

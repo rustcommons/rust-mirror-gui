@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+- **Standard release pipeline** (repository only; no crate or behaviour
+  change). `trusted-publishing.yml` now follows the Rust Commons standard,
+  with the jobs `gate`, `build`, `attest`, `publish`, `github-release` and
+  `verify`:
+  - the gate requires an annotated tag on `main` with green CI, a dated
+    changelog entry and release notes, and keeps the existing
+    tag/version/one-crate guards;
+  - the build packages, audits and installs the crate, with a crate SBOM
+    and `SHA256SUMS-crates`;
+  - provenance is signed;
+  - the crate is published after the owner's approval;
+  - the GitHub Release is created from the committed notes, with the
+    `.crate`, crate SBOM, `SHA256SUMS-crates` and
+    `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl` attached;
+  - verification covers crates.io, the exact tag source, the attestations,
+    docs.rs and a clean install.
+
+  Binaries stay in `release-binaries.yml`. Its uploader and the public
+  download check now accept exactly those four crate files on the release.
+  See [the release steps](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/RELEASING.md#steps).
+
 - **0.5.2 publication record**
   ([docs/evals/2026-11-21-v0.5.2-publication.md](docs/evals/2026-11-21-v0.5.2-publication.md)):
   - registry, docs.rs and a fresh install;

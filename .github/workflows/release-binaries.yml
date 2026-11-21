@@ -181,6 +181,15 @@ jobs:
               echo "::error::$(basename "$f") already exists on $TAG; assets are never replaced"; exit 1
             fi
           done
+          # The only assets allowed before ours: exactly the crate files that
+          # trusted-publishing.yml's github-release job attaches.
+          v="${TAG#v}"
+          for a in $existing; do
+            case "$a" in
+              "$NAME-$v.crate"|"$NAME-$v.crates.cdx.json"|SHA256SUMS-crates|"$NAME-$v.crates.intoto.jsonl") echo "crate file already on $TAG: $a" ;;
+              *) echo "::error::$a is already on $TAG; only the four crate files may precede the binaries"; exit 1 ;;
+            esac
+          done
       - name: Verify the attestations before uploading
         run: |
           # provenance for every file, signed by the reusable build workflow
@@ -213,7 +222,8 @@ jobs:
       - name: Verify the live assets
         run: |
           mkdir check && cd check
-          gh release download "$TAG" --repo "$REPO" --pattern "$NAME-*" --pattern SHA256SUMS
+          # exactly the files this run uploaded (not the crate files)
+          for f in ../dist/* ../bundle/*; do gh release download "$TAG" --repo "$REPO" --pattern "$(basename "$f")"; done
           sha256sum -c SHA256SUMS
           cmp SHA256SUMS ../dist/SHA256SUMS
           b=$(ls *.intoto.jsonl)
