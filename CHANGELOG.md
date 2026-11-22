@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **Repository:** record the 0.5.4 publication, main CI before tagging,
+  the complete Trusted Publishing run and public asset verification.
+  Point the download check at v0.5.4.
+
 ## [0.5.4] - 2026-11-22
 
 - **Metadata freshness:** crate previews and release-list status use readable
