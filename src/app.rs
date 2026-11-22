@@ -2444,6 +2444,60 @@ mod layout_tests {
     }
 
     #[test]
+    fn crate_preview_metadata_details_are_collapsed_by_default() {
+        let mut app = test_app();
+        let mut report = last_result("crate-preview.jsonl")["report"].clone();
+        report["metadata_warnings"] = serde_json::json!((0..10_000)
+            .map(|i| serde_json::json!({
+                "kind": "upstream_metadata_drift",
+                "identity": {
+                    "name": format!("synthetic-detail-{:03}", i % 250),
+                    "version": format!("99.0.{}", i / 250)
+                },
+                "fields": ["rust_version", "pubtime"]
+            }))
+            .collect::<Vec<_>>());
+        app.harvest_crates(Op::CratePreview, Some(report));
+        app.page = Page::CrateSync;
+        let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
+        let mut painted = Vec::new();
+        // Settle layout/animations in a fresh context, without clicking details.
+        for frame in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1440.0, 2400.0),
+                )),
+                time: Some(f64::from(frame)),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| app.draw(ui));
+            out.textures_delta.clear();
+            painted = out
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::epaint::Shape::Text(text) => Some(text.galley.text().to_owned()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+        }
+        assert!(
+            painted.iter().any(|text| text
+                .contains("10,000 versions across 250 crates have updated index metadata")),
+            "the metadata warning summary must be drawn"
+        );
+        assert!(painted.iter().any(|text| text == "Show details"));
+        assert!(
+            !painted
+                .iter()
+                .any(|text| { text.contains("synthetic-detail-") || text.contains("99.0.") }),
+            "metadata crate headings and version rows must be hidden by default"
+        );
+    }
+
+    #[test]
     fn first_window_fits_the_monitor_but_not_below_the_minimum() {
         let wanted = egui::Vec2::from(crate::DEFAULT_INNER_SIZE);
         assert_eq!(
