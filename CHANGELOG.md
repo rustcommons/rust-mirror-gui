@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **Crate preview:** group updated-index metadata warnings into one summary
+  with distinct version/crate counts and changed fields. Details start
+  collapsed, are grouped by crate, and show at most 200 heading/version rows
+  followed by the number of remaining versions. Crate files are unchanged;
+  the new mirror serves the updated index entries. A single warning remains
+  a plain line.
+
 - **Repository:** record the 0.5.3 publication and the first complete phase 2
   release run, including main CI before the tag, signing before approval,
   registry publication, eight release assets and public verification. Point

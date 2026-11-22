@@ -9,6 +9,8 @@ use crate::job::{human_bytes, human_duration};
 use crate::ops::{self, Op};
 use eframe::egui::{self, RichText};
 use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Preview older than this gets a stale warning.
@@ -30,12 +32,175 @@ pub(super) struct CrateState {
     paste_text: String,
     paste_report: Option<Value>,
     /// `needs_approval` sync report (with the frozen preview).
-    preview: Option<Value>,
+    preview: Option<Arc<CratePreview>>,
     completed: Option<Value>,
     filter: String,
     explain: Option<(String, String, Value)>,
     client_config: Option<String>,
     message: Option<(bool, String)>,
+}
+
+/// Includes crate headings as well as version rows. Prepared once at harvest.
+const MAX_METADATA_ROWS: usize = 200;
+
+struct CratePreview {
+    report: Value,
+    metadata: MetadataWarnings,
+}
+
+impl CratePreview {
+    fn new(report: Value) -> Self {
+        let metadata = MetadataWarnings::from_report(&report);
+        Self { report, metadata }
+    }
+}
+
+#[derive(Default)]
+struct MetadataWarnings {
+    versions: usize,
+    summary: String,
+    /// Crate name and its bounded, preformatted version/field rows.
+    details: Vec<(String, Vec<String>)>,
+    more: Option<String>,
+}
+
+fn warning_count(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+impl MetadataWarnings {
+    fn from_report(report: &Value) -> Self {
+        let warnings = report["metadata_warnings"].as_array();
+        let mut groups: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+        let mut fields = BTreeSet::new();
+        for w in warnings.into_iter().flatten() {
+            let (Some(name), Some(version)) = (
+                w["identity"]["name"].as_str(),
+                w["identity"]["version"].as_str(),
+            ) else {
+                continue;
+            };
+            let entry = groups
+                .entry(name.to_owned())
+                .or_default()
+                .entry(version.to_owned())
+                .or_default();
+            for field in list(&w["fields"]) {
+                fields.insert(field.clone());
+                entry.insert(field);
+            }
+        }
+        let versions = groups.values().map(BTreeMap::len).sum();
+        if versions == 0 {
+            return Self::default();
+        }
+        if versions == 1 {
+            let (name, rows) = groups.first_key_value().expect("one crate");
+            let (version, fields) = rows.first_key_value().expect("one version");
+            // Preserve the familiar single-warning line, including field order.
+            let fields = if let Some(w) = warnings.filter(|w| w.len() == 1) {
+                list(&w[0]["fields"])
+            } else {
+                fields.iter().cloned().collect()
+            };
+            let fields = if fields.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", fields.join(", "))
+            };
+            return Self {
+                versions,
+                summary: format!("⚠ Upstream metadata changed for {name} {version}{fields}. The crate file is unchanged; the new mirror serves the updated index entry."),
+                ..Self::default()
+            };
+        }
+        let fields = if fields.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (changed fields: {})",
+                fields.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        };
+        let crates = groups.len();
+        let crate_word = if crates == 1 { "crate" } else { "crates" };
+        let summary = format!(
+            "⚠ {} versions across {} {crate_word} have updated index metadata{fields}. Crate files are unchanged; the new mirror serves the updated index entries.",
+            warning_count(versions), warning_count(crates)
+        );
+        let mut details = Vec::new();
+        let mut rows_left = MAX_METADATA_ROWS;
+        let mut shown = 0;
+        for (name, versions) in groups {
+            if rows_left < 2 {
+                break;
+            } // A crate heading needs at least one version.
+            rows_left -= 1;
+            let rows: Vec<_> = versions
+                .into_iter()
+                .take(rows_left)
+                .map(|(version, fields)| {
+                    if fields.is_empty() {
+                        version
+                    } else {
+                        format!(
+                            "{version} (changed fields: {})",
+                            fields.into_iter().collect::<Vec<_>>().join(", ")
+                        )
+                    }
+                })
+                .collect();
+            shown += rows.len();
+            rows_left -= rows.len();
+            details.push((name, rows));
+        }
+        let more = (shown < versions)
+            .then(|| format!("and {} more versions", warning_count(versions - shown)));
+        Self {
+            versions,
+            summary,
+            details,
+            more,
+        }
+    }
+
+    fn show(&self, ui: &mut egui::Ui, plan_id: &str) {
+        if self.versions == 0 {
+            return;
+        }
+        ui.label(RichText::new(&self.summary).color(AMBER));
+        if self.versions > 1 {
+            egui::CollapsingHeader::new("Show details")
+                .id_salt(("metadata-warnings", plan_id))
+                .default_open(false)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("metadata-warning-rows")
+                        .max_height(240.0)
+                        .show(ui, |ui| {
+                            for (name, versions) in &self.details {
+                                ui.label(RichText::new(name).strong());
+                                ui.indent(name, |ui| {
+                                    for version in versions {
+                                        ui.label(version);
+                                    }
+                                });
+                            }
+                            if let Some(more) = &self.more {
+                                ui.label(more);
+                            }
+                        });
+                });
+        }
+    }
 }
 
 fn s(v: &Value, k: &str) -> String {
@@ -150,7 +315,7 @@ impl App {
             }
             Op::CratePreview => {
                 if let Some(r) = report.filter(|r| s(r, "status") == "needs_approval") {
-                    c.preview = Some(r);
+                    c.preview = Some(Arc::new(CratePreview::new(r)));
                     c.completed = None;
                     c.explain = None;
                 }
@@ -597,8 +762,9 @@ impl App {
             self.crates.completed = None;
             self.start(ctx, Op::CratePreview, spec);
         }
+        // Cheap Arc clone: never copy the full warning report during a frame.
         if let Some(report) = self.crates.preview.clone() {
-            self.crate_preview(ui, ctx, &program, &report);
+            self.crate_preview(ui, ctx, &program, &report.report, &report.metadata);
         }
         if let Some(done) = self.crates.completed.clone() {
             let r = &done["report"];
@@ -634,6 +800,7 @@ impl App {
         ctx: &egui::Context,
         program: &str,
         report: &Value,
+        metadata: &MetadataWarnings,
     ) {
         let plan = &report["preview"];
         let plan_id = s(report, "plan_id");
@@ -745,19 +912,8 @@ impl App {
                 .color(AMBER),
             );
         }
-        // The worker adds these diagnostics to the command report, outside
-        // the frozen preview, so its saved identity stays unchanged.
-        for w in report["metadata_warnings"].as_array().into_iter().flatten() {
-            ui.label(
-                RichText::new(format!(
-                    "⚠ Upstream metadata changed for {} {}: {}. The crate file is unchanged; the new mirror serves the updated index entry.",
-                    s(&w["identity"], "name"),
-                    s(&w["identity"], "version"),
-                    list(&w["fields"]).join(", ")
-                ))
-                .color(AMBER),
-            );
-        }
+        // Only cached summary and bounded details are read during a frame.
+        metadata.show(ui, &plan_id);
         for w in list(&plan["warnings"]) {
             ui.label(RichText::new(format!("⚠ {w}")).color(AMBER));
         }
@@ -1050,4 +1206,131 @@ impl App {
 
 fn program_of() -> String {
     ops::worker_program()
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    use super::*;
+
+    fn warning(name: &str, version: &str, fields: Value) -> Value {
+        json!({"identity": {"name": name, "version": version}, "fields": fields})
+    }
+
+    #[test]
+    fn groups_distinct_crates_and_versions_and_unions_duplicate_fields() {
+        let view = MetadataWarnings::from_report(&json!({"metadata_warnings": [
+            warning("alpha", "1.0.0", json!(["rust_version"])),
+            warning("alpha", "2.0.0", json!(["pubtime"])),
+            warning("alpha", "1.0.0", json!(["pubtime", "rust_version"])),
+            warning("beta", "1.0.0", Value::Null),
+            warning("gamma", "1.0.0", json!(["pubtime"]))
+        ]}));
+        assert_eq!(view.versions, 4);
+        assert!(view.summary.contains("4 versions across 3 crates"));
+        assert!(view
+            .summary
+            .contains("changed fields: pubtime, rust_version"));
+        assert_eq!(
+            view.details,
+            vec![
+                (
+                    "alpha".into(),
+                    vec![
+                        "1.0.0 (changed fields: pubtime, rust_version)".into(),
+                        "2.0.0 (changed fields: pubtime)".into()
+                    ]
+                ),
+                ("beta".into(), vec!["1.0.0".into()]),
+                (
+                    "gamma".into(),
+                    vec!["1.0.0 (changed fields: pubtime)".into()]
+                ),
+            ]
+        );
+        assert!(view.more.is_none());
+    }
+
+    #[test]
+    fn counts_many_crates_before_capping_details() {
+        let warnings: Vec<_> = (0..1284)
+            .map(|i| {
+                warning(
+                    &format!("crate-{:03}", i % 212),
+                    &format!("1.0.{}", i / 212),
+                    json!(["pubtime"]),
+                )
+            })
+            .collect();
+        let view = MetadataWarnings::from_report(&json!({"metadata_warnings": warnings}));
+        assert_eq!(view.versions, 1284);
+        assert!(view.summary.contains("1,284 versions across 212 crates"));
+        let shown: usize = view.details.iter().map(|(_, rows)| rows.len()).sum();
+        assert_eq!(
+            view.more,
+            Some(format!("and {} more versions", warning_count(1284 - shown)))
+        );
+        assert!(view.details.len() + shown <= MAX_METADATA_ROWS);
+    }
+
+    #[test]
+    fn caps_one_large_crate_and_many_small_crates_including_headings() {
+        for one_crate in [true, false] {
+            let warnings: Vec<_> = (0..10000)
+                .map(|i| {
+                    let name = if one_crate {
+                        "one-crate".into()
+                    } else {
+                        format!("crate-{i:05}")
+                    };
+                    warning(&name, &format!("1.0.{i}"), json!(["rust_version"]))
+                })
+                .collect();
+            let view = MetadataWarnings::from_report(&json!({"metadata_warnings": warnings}));
+            let shown: usize = view.details.iter().map(|(_, rows)| rows.len()).sum();
+            assert_eq!(view.details.len() + shown, MAX_METADATA_ROWS);
+            assert_eq!(shown, if one_crate { 199 } else { 100 });
+            assert_eq!(
+                view.more,
+                Some(format!(
+                    "and {} more versions",
+                    warning_count(10000 - shown)
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn single_warning_is_a_plain_line_with_optional_typed_fields() {
+        let view = MetadataWarnings::from_report(&json!({"metadata_warnings": [
+            warning("example", "1.2.3", json!(["rust_version", "pubtime"]))
+        ]}));
+        assert_eq!(view.versions, 1);
+        assert_eq!(view.summary, "⚠ Upstream metadata changed for example 1.2.3: rust_version, pubtime. The crate file is unchanged; the new mirror serves the updated index entry.");
+        assert!(view.details.is_empty());
+        assert!(view.more.is_none());
+        let missing = MetadataWarnings::from_report(&json!({"metadata_warnings": [
+            warning("example", "1.2.3", Value::Null)
+        ]}));
+        assert!(missing.summary.contains("example 1.2.3. The crate file"));
+    }
+
+    #[test]
+    fn omits_missing_fields_without_parsing_prose_and_handles_no_warnings() {
+        let view = MetadataWarnings::from_report(&json!({"metadata_warnings": [
+            warning("alpha", "1.0.0", Value::Null),
+            warning("alpha", "2.0.0", Value::Null)
+        ]}));
+        assert!(!view.summary.contains("changed fields"));
+        assert_eq!(
+            view.details,
+            vec![("alpha".into(), vec!["1.0.0".into(), "2.0.0".into()])]
+        );
+        assert_eq!(MetadataWarnings::from_report(&json!({})).versions, 0);
+        let duplicate = MetadataWarnings::from_report(&json!({"metadata_warnings": [
+            warning("alpha", "1.0.0", json!(["pubtime"])),
+            warning("alpha", "1.0.0", json!(["pubtime"]))
+        ]}));
+        assert_eq!(duplicate.versions, 1);
+        assert!(duplicate.details.is_empty());
+    }
 }
