@@ -750,7 +750,7 @@ impl App {
         for w in report["metadata_warnings"].as_array().into_iter().flatten() {
             ui.label(
                 RichText::new(format!(
-                    "⚠ Upstream metadata changed for {} {}: {}. The previously mirrored version is kept.",
+                    "⚠ Upstream metadata changed for {} {}: {}. The crate file is unchanged; the new mirror serves the updated index entry.",
                     s(&w["identity"], "name"),
                     s(&w["identity"], "version"),
                     list(&w["fields"]).join(", ")

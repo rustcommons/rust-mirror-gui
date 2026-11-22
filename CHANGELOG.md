@@ -6,11 +6,13 @@
 
 - **Publish:** embedded rust-mirror 0.6.1 fixes slow uploads failing after
   the server has already stored the file.
-- **Crate downloads:** remove the unintended throughput cap near 5 MiB/s.
+- **Crate downloads:** no longer save progress to disk after every chunk,
+  which slowed fast downloads.
 - **Incremental crate mirrors:** upstream index backfills no longer block
   extending an existing generation when immutable identities are unchanged.
   The crate preview displays metadata warnings with the affected crate,
-  version and changed fields; previously mirrored versions are kept.
+  version and changed fields. The crate file is unchanged; the new mirror
+  serves the updated index entry. Older mirrors' bytes stay unchanged.
 - **Retention:** toolchain Resume and Force work after a prune.
 - **Engine:** update to crates.io rust-mirror 0.6.1, including the fuzz
   workspace's exact pin and lockfile. The engine update is additive; catalogs,
@@ -24,62 +26,41 @@
   `form_urlencoded` 1.2.3) in both workspaces to fix RUSTSEC-2026-0592
   and restore the cargo-deny gate. No new dependency is added.
 
-- **Release pipeline, phase 2** (repository only; no crate or behaviour
-  change). `trusted-publishing.yml`'s `build` now calls the reusable
-  `build-binaries.yml`. It builds the crate and the four downloads with
-  every existing qualification gate, writes one SBOM and one `SHA256SUMS`,
-  and signs them, on the tag only, in its nested "Checksums and
-  attestations" job.
-  - `github-release` checks every attestation, the bundle and the SBOM
-    bindings, creates the release as a draft from the committed notes,
-    uploads every asset with name, size and digest checks, and only then
-    publishes it.
-  - `verify` checks every asset on Windows and Linux and runs the
-    downloaded worker.
-  - From the release after 0.5.2, the assets are:
-    - `rust-mirror-gui-X.Y.Z.crate`;
-    - the four archives;
-    - `rust-mirror-gui-X.Y.Z.cdx.json`;
-    - one `SHA256SUMS` (the crate, the archives and the SBOM);
-    - `rust-mirror-gui-X.Y.Z.intoto.jsonl`.
-  - `release-binaries.yml` is retired, so a late crates.io approval no
-    longer leaves the downloads behind.
-  - The release-asset code moved into `scripts/release_assets.py`, with
-    tests for the old and the new layouts. Its GitHub API helper accepts
-    only `api.github.com` and `uploads.github.com`.
-  - The download check (`verify-release-download.yml`) keeps 0.4.3 to
-    0.5.2 exactly as before, and runs on changes to that code.
-  - **Least-privilege hardening:**
-    - `publish` packages and compares the crate before any token exists,
-      and only `cargo publish --locked --no-verify` receives the
-      short-lived token;
-    - the SBOM tool and the crate build run in their own job, not where
-      the downloads are collected and `SHA256SUMS` is written;
-    - fork pull requests skip the signing-capable `build`;
-    - a release is marked latest only if it is the highest version;
-    - the archives' `README.txt` prints the strict `gh attestation verify`
-      command (signer workflow and commit digests).
+- **Standard release pipeline, phase 2** (repository only). The jobs are
+  `gate`, `build`, `publish`, `github-release` and `verify`:
+  - `gate` requires an annotated tag on `main` with green CI, a dated
+    changelog entry and release notes, and matching tag/version/one-crate
+    guards;
+  - `build` calls reusable `build-binaries.yml`, which builds all four
+    binaries with the qualification gates, packages, audits and installs
+    the crate, and writes one SBOM and one `SHA256SUMS`. On the exact tag
+    push, its nested "Checksums and attestations" job signs before the
+    owner's publication approval;
+  - `publish` publishes the crate after the owner's approval;
+  - `github-release` checks the attestations, bundle and SBOM bindings,
+    creates a draft from the committed notes, uploads and checks each
+    file's name, size and digest, then publishes the release;
+  - `verify` checks every asset on Windows and Linux, runs the downloaded
+    worker, and checks crates.io against the attested crate and exact tag
+    source, docs.rs and a clean install.
 
-- **Standard release pipeline** (repository only; no crate or behaviour
-  change). `trusted-publishing.yml` now follows the Rust Commons standard,
-  with the jobs `gate`, `build`, `attest`, `publish`, `github-release` and
-  `verify`:
-  - the gate requires an annotated tag on `main` with green CI, a dated
-    changelog entry and release notes, and keeps the existing
-    tag/version/one-crate guards;
-  - the build packages, audits and installs the crate, with a crate SBOM
-    and `SHA256SUMS-crates`;
-  - provenance is signed;
-  - the crate is published after the owner's approval;
-  - the GitHub Release is created from the committed notes, with the
-    `.crate`, crate SBOM, `SHA256SUMS-crates` and
-    `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl` attached;
-  - verification covers crates.io, the exact tag source, the attestations,
-    docs.rs and a clean install.
+  The eight assets are the `.crate`, four platform archives, one
+  `rust-mirror-gui-X.Y.Z.cdx.json`, one `SHA256SUMS` listing those six
+  payloads, and one `rust-mirror-gui-X.Y.Z.intoto.jsonl` provenance bundle.
+  `release-binaries.yml` is retired. Older releases keep their original layouts.
 
-  Binaries stay in `release-binaries.yml`. Its uploader and the public
-  download check now accept exactly those four crate files on the release.
-  See [the release steps](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/RELEASING.md#steps).
+  `scripts/release_assets.py` holds the layouts, draft-release flow and
+  public verification, with tests for old and new layouts. Its API helper
+  accepts only `api.github.com` and `uploads.github.com`.
+  `verify-release-download.yml` also runs on changes to that code.
+
+  **Least-privilege hardening:** packaging and comparison precede token
+  creation; only `cargo publish --locked --no-verify` receives the token.
+  The SBOM tool and crate build run separately from checksum collection;
+  fork PRs skip the signing-capable build; only the highest version is
+  marked latest; archive `README.txt` files print the strict verification
+  command with signer workflow and commit digests. See the
+  [release steps](https://github.com/rustcommons/rust-mirror-gui/blob/main/docs/RELEASING.md#steps).
 
 - **0.5.2 publication record**
   ([docs/evals/2026-11-21-v0.5.2-publication.md](docs/evals/2026-11-21-v0.5.2-publication.md)):

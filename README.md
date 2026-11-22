@@ -24,8 +24,8 @@ can stop or end it.
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
 **Status: 0.5.3.** Builds in rust-mirror 0.6.1: fixes slow uploads,
-crate download throughput, incremental crate generations after index
-backfills, and toolchain resume/force after pruning. Crate previews show
+per-chunk progress writes that slowed crate downloads, incremental generations
+after index backfills, and toolchain resume/force after pruning. Crate previews show
 upstream metadata warnings. Releases include the published crate and a signed
 provenance bundle for offline verification. 0.5.1 is the
 first release whose downloads come with an

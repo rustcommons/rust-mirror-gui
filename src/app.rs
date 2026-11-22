@@ -2437,7 +2437,7 @@ mod layout_tests {
         };
         let mut out = ctx.run_ui(input, |ui| app.draw(ui));
         out.textures_delta.clear();
-        let expected = "Upstream metadata changed for example 1.2.3: rust_version, pubtime";
+        let expected = "Upstream metadata changed for example 1.2.3: rust_version, pubtime. The crate file is unchanged; the new mirror serves the updated index entry.";
         assert!(out.shapes.iter().any(|shape| {
             matches!(&shape.shape, egui::epaint::Shape::Text(text) if text.galley.text().contains(expected))
         }), "metadata warning must be visible in the crate preview");
