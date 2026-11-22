@@ -2944,7 +2944,7 @@ dependencies = [
 
 [[package]]
 name = "rust-mirror-gui"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "eframe",
  "rust-mirror",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-22
+
 - **Metadata freshness:** crate previews and release-list status use readable
   ages such as "8 days ago" and "3 hours old", with minutes included for
   ages under six hours. Live job timers keep their existing format.
