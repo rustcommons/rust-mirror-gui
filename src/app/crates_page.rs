@@ -5,7 +5,7 @@
 //! downloads and TOML writing all happen in the rust-mirror worker.
 use super::{banner, text_field, App, AMBER, BLUE, GREEN, RED};
 use crate::config::{split_list, TESTED_HOSTS};
-use crate::job::{human_bytes, human_duration};
+use crate::job::{human_age, human_bytes};
 use crate::ops::{self, Op};
 use eframe::egui::{self, RichText};
 use serde_json::{json, Map, Value};
@@ -823,7 +823,7 @@ impl App {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs());
             let age = Duration::from_secs(now.saturating_sub(at));
-            let text = format!("crates.io index read {} ago", human_duration(age));
+            let text = format!("crates.io index read {} ago", human_age(age));
             if age > STALE_AFTER {
                 banner(ui, AMBER, &format!("{text}. Newer versions may exist: preview again into a new folder to include them."));
             } else {

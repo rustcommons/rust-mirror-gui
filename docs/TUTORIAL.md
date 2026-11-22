@@ -591,8 +591,9 @@ Open **Crate preview & sync**:
 How to read it:
 - **"8 crates, 12 versions, 22 files"**: the whole mirror. Files include the
   index entries.
-- **"crates.io index read … ago"**: shows a warning after a day. Preview again
-  into a new folder to pick up newer versions.
+- **"crates.io index read 8 days ago"**: freshness uses readable minutes,
+  hours or days, and shows a warning after a day. Preview again into a new
+  folder to pick up newer versions.
 - **Size bar:** the estimated total against the catalog's size limit. Red
   messages mean a limit would be exceeded, and approval is disabled until you
   change the catalog.
