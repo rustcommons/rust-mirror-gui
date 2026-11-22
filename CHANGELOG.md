@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- **Repository:** use the unified `actions/attest` v4.2.2 for release
+  provenance and SBOM attestations, replacing the deprecated SBOM action
+  and the provenance wrapper. Subjects, bundle collection, permissions
+  and the signer-workflow verification policy are unchanged.
+
 - **Release pipeline, phase 2** (repository only; no crate or behaviour
   change). `trusted-publishing.yml`'s `build` now calls the reusable
   `build-binaries.yml`. It builds the crate and the four downloads with
