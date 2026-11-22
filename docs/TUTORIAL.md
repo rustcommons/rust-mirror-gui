@@ -92,8 +92,8 @@ rust-mirror-gui
   `~/.config/rust-mirror-gui/settings.json` on Linux.
 
 When the app starts, the top bar should say
-**"✔ rust-mirror 0.6.0 built in · event protocol 1"** (the version of the
-built-in engine; 0.5.2 has 0.6.0). If it shows a red message,
+**"✔ rust-mirror 0.6.1 built in · event protocol 1"** (the version of the
+built-in engine; 0.5.3 has 0.6.1). If it shows a red message,
 open **About the engine** (see [Troubleshooting](#9-troubleshooting)).
 
 ## 2. Your first mirror in about 10 minutes

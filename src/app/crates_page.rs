@@ -745,6 +745,19 @@ impl App {
                 .color(AMBER),
             );
         }
+        // The worker adds these diagnostics to the command report, outside
+        // the frozen preview, so its saved identity stays unchanged.
+        for w in report["metadata_warnings"].as_array().into_iter().flatten() {
+            ui.label(
+                RichText::new(format!(
+                    "⚠ Upstream metadata changed for {} {}: {}. The previously mirrored version is kept.",
+                    s(&w["identity"], "name"),
+                    s(&w["identity"], "version"),
+                    list(&w["fields"]).join(", ")
+                ))
+                .color(AMBER),
+            );
+        }
         for w in list(&plan["warnings"]) {
             ui.label(RichText::new(format!("⚠ {w}")).color(AMBER));
         }

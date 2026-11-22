@@ -15,7 +15,7 @@ libfuzzer-sys = "0.4.13"
 rust-mirror-gui = { path = ".." }
 # Already dependencies of rust-mirror-gui; named here so the targets can call
 # the engine's certificate reader and serde_json directly.
-rust-mirror = "=0.6.0"
+rust-mirror = "=0.6.1"
 serde_json = "1.0"
 
 # A workspace of its own, so the main crate's build never includes it.

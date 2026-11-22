@@ -54,6 +54,10 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   0.6.0 (`rust-mirror = "0.6"`, lock refreshed) plus main as it stood (the
   signed provenance bundle, fuzzing, CI warnings cleared), published through
   Trusted Publishing; `trusted-publishing.yml` unchanged in this release.
+  On 2026-11-22 the owner authorized 0.5.3: embed crates.io rust-mirror
+  0.6.1, surface metadata warnings in the crate preview, and ship the
+  phase 2 pipeline after PR #35 merges. Trusted Publishing remains the
+  only publication route. Do not push to main, merge or tag.
   CI build artifacts for owner trials are allowed.
 - Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
   attaching them from now on, replacing the earlier "notes only" rule.

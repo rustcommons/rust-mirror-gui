@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-22
+
+- **Publish:** embedded rust-mirror 0.6.1 fixes slow uploads failing after
+  the server has already stored the file.
+- **Crate downloads:** remove the unintended throughput cap near 5 MiB/s.
+- **Incremental crate mirrors:** upstream index backfills no longer block
+  extending an existing generation when immutable identities are unchanged.
+  The crate preview displays metadata warnings with the affected crate,
+  version and changed fields; previously mirrored versions are kept.
+- **Retention:** toolchain Resume and Force work after a prune.
+- **Engine:** update to crates.io rust-mirror 0.6.1, including the fuzz
+  workspace's exact pin and lockfile. The engine update is additive; catalogs,
+  settings and event protocol 1 remain compatible. No new dependency is added.
+
 - **Repository:** use the unified `actions/attest` v4.2.2 for release
   provenance and SBOM attestations, replacing the deprecated SBOM action
   and the provenance wrapper. Subjects, bundle collection, permissions
