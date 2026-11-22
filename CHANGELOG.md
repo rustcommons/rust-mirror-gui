@@ -9,6 +9,11 @@
   the new mirror serves the updated index entries. A single warning remains
   a plain line.
 
+- **Repository:** record the 0.5.3 publication and the first complete phase 2
+  release run, including main CI before the tag, signing before approval,
+  registry publication, eight release assets and public verification. Point
+  the download check at v0.5.3.
+
 ## [0.5.3] - 2026-11-22
 
 - **Publish:** embedded rust-mirror 0.6.1 fixes slow uploads failing after

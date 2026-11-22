@@ -27,24 +27,20 @@ publishes it.
 gone: nothing waits for a hand-made release. The verifiers keep 0.4.3 to
 0.5.2 in their original layouts.
 
+**First complete tag run passed with 0.5.3 (2026-11-22).**
+[Trusted publishing run 45037116262](https://github.com/rustcommons/rust-mirror-gui/actions/runs/45037116262)
+succeeded on attempt 1: signing before owner approval, crates.io publication,
+automatic draft creation and publication with eight assets, and Windows/Linux
+public verification. The tag followed successful CI on main. See the
+[publication record](evals/2026-11-22-v0.5.3-publication.md) for each job,
+timings, signer evidence, registry equality and the macOS capacity notice.
+
 Deferred, not lost:
 
-- **First tag run.** These run only on a tag, so their first real use is
-  the next authorized release:
-  - the nested signing job;
-  - `publish`;
-  - the draft-and-publish `github-release`;
-  - the Windows and Linux `verify` legs.
-
-  Record then:
-  - the certificate (signer `build-binaries.yml`, trigger `push`);
-  - the bundle's eight lines or fewer, and their subjects;
-  - the docs.rs wait;
-  - whether any re-run was needed.
 - **Release-PR audit overlap.** Every dry run now repeats the package audit,
   the packaged install and all qualification gates. The manual release-PR
-  checks stay until a release proves the pipeline; after that, a release
-  PR can cite its dry run instead.
+  checks remain for now. 0.5.3 proves the full pipeline; deciding which
+  manual checks can cite the dry run is a follow-up.
 - **Window checks after publication.** `verify` runs the downloaded worker.
   The window-drawing checks on the published downloads stay in
   `verify-release-download.yml`, run by hand after publication. Folding them
