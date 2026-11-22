@@ -58,6 +58,10 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   0.6.1, surface metadata warnings in the crate preview, and ship the
   phase 2 pipeline after PR #35 merges. Trusted Publishing remains the
   only publication route. Do not push to main, merge or tag.
+  On 2026-11-22 the owner authorized 0.5.4: main as it stands with grouped
+  metadata warnings (PR #38) and readable freshness ages (PR #39).
+  The engine stays at rust-mirror 0.6.1; no new dependencies. The owner
+  merges, waits for main CI, tags and approves Trusted Publishing.
   CI build artifacts for owner trials are allowed.
 - Prebuilt binaries on GitHub Releases: on 2026-11-15 the owner authorized
   attaching them from now on, replacing the earlier "notes only" rule.
