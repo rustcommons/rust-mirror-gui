@@ -2416,6 +2416,34 @@ mod layout_tests {
     }
 
     #[test]
+    fn crate_preview_displays_report_metadata_warnings() {
+        let mut app = test_app();
+        let mut report = last_result("crate-preview.jsonl")["report"].clone();
+        report["metadata_warnings"] = serde_json::json!([{
+            "kind": "upstream_metadata_drift",
+            "identity": {"name": "example", "version": "1.2.3"},
+            "fields": ["rust_version", "pubtime"]
+        }]);
+        app.harvest_crates(Op::CratePreview, Some(report));
+        app.page = Page::CrateSync;
+        let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 2400.0),
+            )),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| app.draw(ui));
+        out.textures_delta.clear();
+        let expected = "Upstream metadata changed for example 1.2.3: rust_version, pubtime. The crate file is unchanged; the new mirror serves the updated index entry.";
+        assert!(out.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::epaint::Shape::Text(text) if text.galley.text().contains(expected))
+        }), "metadata warning must be visible in the crate preview");
+    }
+
+    #[test]
     fn first_window_fits_the_monitor_but_not_below_the_minimum() {
         let wanted = egui::Vec2::from(crate::DEFAULT_INNER_SIZE);
         assert_eq!(

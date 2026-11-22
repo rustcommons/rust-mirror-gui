@@ -23,8 +23,11 @@ can stop or end it.
 
 **New here?** Read the [tutorial](docs/TUTORIAL.md): your first mirror in about 10 minutes.
 
-**Status: 0.5.2.** 0.5.2 builds in rust-mirror 0.6.0, and its downloads
-come with a signed provenance bundle for offline verification. 0.5.1 is the
+**Status: 0.5.3.** Builds in rust-mirror 0.6.1: fixes slow uploads,
+per-chunk progress writes that slowed crate downloads, incremental generations
+after index backfills, and toolchain resume/force after pruning. Crate previews show
+upstream metadata warnings. Releases include the published crate and a signed
+provenance bundle for offline verification. 0.5.1 is the
 first release whose downloads come with an
 SBOM, SLSA Build Level 3 provenance and reproducible builds. 0.5.0 builds its fonts in (no system fonts needed) and
 documents the [supported platforms](#supported-platforms). 0.4.3 is the
@@ -37,7 +40,7 @@ small windows and scaled displays. 0.4.0 added Cargo.lock import and crate
 retention. Tested inside real Remote Desktop sessions on Windows Server 2022
 and 2025 and with xrdp on Linux ([record](docs/evals/2026-11-15-remote-desktop.md));
 macOS runtime and screen readers are not yet verified; see
-[known limits](docs/releases/v0.5.2.md#validation-and-limits).
+[known limits](docs/releases/v0.5.3.md#validation-and-limits).
 
 ## Supported platforms
 
@@ -94,7 +97,7 @@ from 0.4.3 on has ready-to-run archives:
 
 From 0.5.1 on, each release also has `rust-mirror-gui-<version>.cdx.json`, a
 CycloneDX SBOM listing every dependency built into the program.
-From the release after 0.5.2, it also has `rust-mirror-gui-<version>.crate`,
+From 0.5.3 on, it also has `rust-mirror-gui-<version>.crate`,
 the crate exactly as published to crates.io, which `SHA256SUMS` lists too.
 
 Unpack it and run `rust-mirror-gui` (`rust-mirror-gui.exe` on Windows) from
@@ -106,7 +109,7 @@ so the Visual C++ Redistributable isn't required.
 
 ```powershell
 # Windows (PowerShell): compare with the line for this file in SHA256SUMS
-Get-FileHash .\rust-mirror-gui-0.5.2-x86_64-pc-windows-msvc.zip
+Get-FileHash .\rust-mirror-gui-0.5.3-x86_64-pc-windows-msvc.zip
 ```
 
 ```sh
@@ -121,7 +124,7 @@ also has an attestation for its SBOM. With the
 [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify rust-mirror-gui-0.5.2-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify rust-mirror-gui-0.5.3-x86_64-unknown-linux-gnu.tar.gz \
   --repo rustcommons/rust-mirror-gui \
   --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
 ```
@@ -247,7 +250,7 @@ writes to a server: use only a fresh, empty test repository.
 ## Documentation
 
 - [Changelog](CHANGELOG.md) and [GitHub Releases](https://github.com/rustcommons/rust-mirror-gui/releases)
-- [Release notes for 0.5.2](docs/releases/v0.5.2.md), [0.5.1](docs/releases/v0.5.1.md), [0.5.0](docs/releases/v0.5.0.md), [0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
+- [Release notes for 0.5.3](docs/releases/v0.5.3.md), [0.5.2](docs/releases/v0.5.2.md), [0.5.1](docs/releases/v0.5.1.md), [0.5.0](docs/releases/v0.5.0.md), [0.4.3](docs/releases/v0.4.3.md), [0.4.2](docs/releases/v0.4.2.md), [0.4.1](docs/releases/v0.4.1.md), [0.4.0](docs/releases/v0.4.0.md), [0.3.0](docs/releases/v0.3.0.md), [0.2.0](docs/releases/v0.2.0.md) and [0.1.0](docs/releases/v0.1.0.md)
 - [Design and architecture](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md): planned and deferred work, including no-GPU and Remote Desktop testing
 - [Windows trial guide](TRYING.md)

@@ -73,6 +73,12 @@ Deferred, not lost:
 
 ## Planned
 
+- **Group crate metadata warnings.** The 0.5.3 preview shows one warning
+  per affected version, so a broad upstream index backfill can create a
+  long list. Group or summarize warnings while keeping every affected
+  version and changed field available for inspection. Deferred; no grouping
+  is implemented in 0.5.3.
+
 - **Use system network settings by default** (raised by the owner on
   2026-11-12; not yet scheduled). Today (0.2.0) the app connects directly
   unless you choose a proxy and add a company certificate yourself. The goal
