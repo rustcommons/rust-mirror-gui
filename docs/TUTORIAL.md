@@ -596,6 +596,12 @@ How to read it:
 - **Size bar:** the estimated total against the catalog's size limit. Red
   messages mean a limit would be exceeded, and approval is disabled until you
   change the catalog.
+- **Updated index metadata warnings:** a summary counts distinct versions
+  and crates and lists changed field names when available. Crate files are
+  unchanged; the new mirror serves the updated index entries. **Show details**
+  starts closed and groups versions by crate. It shows at most 200 crate
+  headings/version rows, then the number of remaining versions. A single
+  warning appears as a plain line.
 - **Changes since the previous mirror:** counts of added, kept, kept but now
   yanked (old lock files still need them), and kept but no longer selected.
 - **Each row:** crate, version, size (or "unknown"), and flags:

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **Crate preview:** group updated-index metadata warnings into one summary
+  with distinct version/crate counts and changed fields. Details start
+  collapsed, are grouped by crate, and show at most 200 heading/version rows
+  followed by the number of remaining versions. Crate files are unchanged;
+  the new mirror serves the updated index entries. A single warning remains
+  a plain line.
+
 ## [0.5.3] - 2026-11-22
 
 - **Publish:** embedded rust-mirror 0.6.1 fixes slow uploads failing after

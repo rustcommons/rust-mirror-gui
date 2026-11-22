@@ -5,7 +5,8 @@
 //!
 //! - `FAKE_SCENARIO`: `ok` (default), `fail`, `stall`, `quiet-stage`,
 //!   `ignore-cancel`, `garbage`, `crash`, `legacy`, `protocol2`, `big-result`
-//!   (a 3 MiB result line, like a large crate preview)
+//!   (a 3 MiB result line, like a large crate preview), `metadata-warnings`
+//!   (10,000 synthetic metadata warnings in a crate preview)
 //! - `FAKE_STEP_MS`: delay between steps in ms (default 300)
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,6 +63,26 @@ fn main() {
         emit(&format!(
             r#"{{"type":"result","seq":1,"elapsed_ms":1,"ok":true,"report":{{"filler":"{filler}"}},"error":null}}"#
         ));
+        return;
+    }
+    if scenario == "metadata-warnings"
+        && command == "crates"
+        && args.get(1).map(String::as_str) == Some("sync")
+    {
+        let fixture = include_str!("../../tests/fixtures/layout/crate-preview.jsonl");
+        let mut result: serde_json::Value =
+            serde_json::from_str(fixture.lines().last().expect("fixture result"))
+                .expect("fixture JSON");
+        let warnings: Vec<_> = (0..10000).map(|i| serde_json::json!({
+            "kind": "upstream_metadata_drift",
+            "identity": {"name": format!("example-crate-{:03}", i % 250), "version": format!("1.0.{}", i / 250)},
+            "fields": ["rust_version", "pubtime"]
+        })).collect();
+        result["report"]["metadata_warnings"] = serde_json::json!(warnings);
+        emit(
+            r#"{"type":"hello","seq":0,"elapsed_ms":0,"protocol":1,"tool_version":"0.0.0-fake","command":"crates"}"#,
+        );
+        emit(&result.to_string());
         return;
     }
     let has = |flag: &str| args.iter().any(|a| a == flag);

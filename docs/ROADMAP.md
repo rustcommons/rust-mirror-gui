@@ -73,11 +73,12 @@ Deferred, not lost:
 
 ## Planned
 
-- **Group crate metadata warnings.** The 0.5.3 preview shows one warning
-  per affected version, so a broad upstream index backfill can create a
-  long list. Group or summarize warnings while keeping every affected
-  version and changed field available for inspection. Deferred; no grouping
-  is implemented in 0.5.3.
+- **Group crate metadata warnings — done (2026-11-22; unreleased).**
+  The preview prepares one summary at report receipt, counting distinct
+  versions/crates and taking the union of typed field names. Details are
+  grouped by crate, closed by default, and capped at 200 heading/version
+  rows with the remaining version count. Single warnings remain a plain
+  line. Owner-approved implementation only; no version bump or release.
 
 - **Use system network settings by default** (raised by the owner on
   2026-11-12; not yet scheduled). Today (0.2.0) the app connects directly
