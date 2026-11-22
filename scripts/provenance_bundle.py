@@ -2,7 +2,7 @@
 """Assemble and check a release's provenance bundle file.
 
 The release attaches `<name>-<version>.intoto.jsonl`: JSON Lines, one Sigstore
-bundle per line, as written by actions/attest-build-provenance (its SLSA
+bundle per line, as written by actions/attest (its default SLSA
 build-provenance attestation; the same design as rust-mirror). Each bundle
 holds a DSSE envelope with an in-toto statement. Scorecard's Signed-Releases check recognizes the `.intoto.jsonl`
 suffix, and users can verify offline with
