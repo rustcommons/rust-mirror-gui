@@ -31,7 +31,7 @@ jobs:
   baseline:
     # Dependabot PRs run only the core checks (org runner budget).
     if: github.actor != 'dependabot[bot]' && (github.event.action != 'labeled' || github.event.label.name == 'run-glibc-experiments')
-    # Exactly how release-binaries.yml builds the published Linux download.
+    # Exactly how build-binaries-core.yml builds the published Linux download.
     runs-on: ubuntu-22.04
     container: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
     steps:

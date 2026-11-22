@@ -2,7 +2,7 @@ name: Reproducible build check
 
 # Builds the same commit twice, on separate fresh runners, with exactly the
 # release build (build-binaries-core.yml), then compares the SHA-256 of every
-# executable and every archive. It reports what it finds (in the job summary
+# executable, every archive and the .crate. It reports what it finds (in the job summary
 # and reproducibility.json); it does not claim bit-identical builds in advance.
 # The SBOM is not compared: CycloneDX gives every document a new serial number
 # and timestamp. Read-only: nothing is attested or uploaded to a release.
@@ -14,6 +14,7 @@ on:
     paths:
       - .github/workflows/reproducible-build.yml
       - .github/workflows/build-binaries-core.yml
+      - scripts/release_assets.py
 permissions:
   contents: read
 # One run per PR: a new push cancels the PR's older runs (pushes to main and
@@ -45,6 +46,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       source-label: reproducibility check (not a release)
       launch-test: false
+      crate-install: false
       artifact-prefix: first-
 
   second:
@@ -57,6 +59,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       source-label: reproducibility check (not a release)
       launch-test: false
+      crate-install: false
       artifact-prefix: second-
 
   compare:
@@ -91,6 +94,10 @@ jobs:
                   ea, eb = exe(a), exe(b)
                   rows.append({"file": a.name, "archive_identical": h(a.read_bytes()) == h(b.read_bytes()),
                                "executable_identical": ea == eb, "executable_sha256": [ea, eb]})
+          for a in sorted(pathlib.Path('first').glob('*.crate')):
+              same = a.read_bytes() == (pathlib.Path('second') / a.name).read_bytes()
+              rows.append({"file": a.name, "archive_identical": same, "executable_identical": same,
+                           "executable_sha256": [h(a.read_bytes()), h((pathlib.Path('second') / a.name).read_bytes())]})
           report = {"commit": os.environ["GITHUB_SHA"], "run": os.environ["GITHUB_RUN_ID"], "results": rows}
           pathlib.Path('reproducibility.json').write_text(json.dumps(report, indent=2) + "\n")
           lines = ["| Archive | Executable identical | Archive identical |", "| --- | --- | --- |"]

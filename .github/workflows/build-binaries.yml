@@ -1,11 +1,14 @@
-name: Build and sign release binaries (reusable)
+name: Build and sign release assets (reusable)
 
-# Releases only. Runs the release build (build-binaries-core.yml), then signs
-# here: build provenance for every file, and the SBOM for every archive.
-# Because the signing runs in this reusable workflow, isolated from the
-# workflow that calls it, the attestations meet SLSA v1 Build Level 3
-# (GitHub: "Using artifact attestations and reusable workflows to achieve
-# SLSA v1 Build Level 3"). Called by release-binaries.yml when publishing.
+# The isolated reusable builder and signer (GitHub's SLSA v1 Build Level 3
+# reusable-workflow pattern). It builds the crate and all four binaries through
+# the read-only build-binaries-core.yml (every qualification gate, one SBOM,
+# one SHA256SUMS) and, only on a v* tag push, signs exactly those bytes in its
+# own job "Checksums and attestations". A build-binaries.yml signature
+# therefore proves this qualified build produced the files.
+#
+# trusted-publishing.yml's `build` job is the only caller that signs. Its pull
+# request and manual runs build everything and never sign.
 #
 # Users verify with:
 #   gh attestation verify FILE --repo rustcommons/rust-mirror-gui \
@@ -22,73 +25,96 @@ on:
         type: string
         required: true
       source-label:
-        description: What README.txt says it was built from (the tag)
+        description: What README.txt says it was built from (the tag, or a dry-run note)
         type: string
         required: true
+      sign:
+        description: Sign the build (honoured only on the exact v* tag push)
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
   NAME: rust-mirror-gui
 jobs:
   build:
-    uses: $/.github/workflows/build-binaries-core.yml
+    # Core jobs hold contents read only.
     permissions:
       contents: read
+    uses: $/.github/workflows/build-binaries-core.yml
     with:
       ref: ${{ inputs.ref }}
       version: ${{ inputs.version }}
       source-label: ${{ inputs.source-label }}
 
   attest:
-    # Signed here, inside the reusable workflow (SLSA Build L3).
+    name: Checksums and attestations
+    # Signed here, inside the reusable workflow (SLSA Build L3), and only for
+    # the exact tag push of this version.
     needs: [build]
+    if: inputs.sign && github.event_name == 'push' && github.ref == format('refs/tags/v{0}', inputs.version)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
       attestations: write
     env:
       VERSION: ${{ inputs.version }}
+      RELEASE_COMMIT: ${{ inputs.ref }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-files
-          path: dist
-      - name: Bundle script (this workflow's commit)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: tools
-          sparse-checkout: scripts
-          persist-credentials: false
-      - name: Attest build provenance (every file)
+          path: ${{ runner.temp }}/dist
+      - name: Re-check the tag, the commits and the exact build files before signing
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          [ "$GITHUB_REF" = "refs/tags/$tag" ] || { echo "::error::signing needs the exact $tag push"; exit 1; }
+          [ "$RELEASE_COMMIT" = "$GITHUB_SHA" ] || { echo "::error::built commit $RELEASE_COMMIT is not this run's $GITHUB_SHA"; exit 1; }
+          [ "$(git rev-parse "refs/tags/$tag^{commit}")" = "$GITHUB_SHA" ] || { echo "::error::$tag is not this commit"; exit 1; }
+          live=$(git ls-remote origin "refs/tags/$tag^{}" | cut -f1)
+          [ "$live" = "$GITHUB_SHA" ] || { echo "::error::the live tag moved"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$tag is not on main"; exit 1; }
+          python3 scripts/release_assets.py check-build "$RUNNER_TEMP/dist" "$VERSION"
+          python3 - "$RUNNER_TEMP/dist/$NAME-$VERSION.crate" "$GITHUB_SHA" <<'PY'
+          import json, sys, tarfile
+          path, commit = sys.argv[1:]
+          prefix = path.rsplit('/', 1)[1].removesuffix('.crate')
+          vcs = json.loads(tarfile.open(path).extractfile(prefix + '/.cargo_vcs_info.json').read())
+          assert vcs['git']['sha1'] == commit and not vcs['git'].get('dirty', False), 'crate VCS record differs'
+          print('crate VCS record:', commit)
+          PY
+      - name: Attest build provenance (the crate, the archives, the SBOM and SHA256SUMS)
         id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/*
-      - name: Attest the SBOM (each archive)
-        id: sbom
+          subject-path: ${{ runner.temp }}/dist/*
+      - name: Attest the SBOM (each archive and the crate)
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: |
-            dist/*.zip
-            dist/*.tar.gz
-          sbom-path: dist/${{ env.NAME }}-${{ inputs.version }}.cdx.json
+            ${{ runner.temp }}/dist/*.zip
+            ${{ runner.temp }}/dist/*.tar.gz
+            ${{ runner.temp }}/dist/*.crate
+          sbom-path: ${{ runner.temp }}/dist/${{ env.NAME }}-${{ inputs.version }}.cdx.json
       - name: Provenance bundle file for the release (<name>-<version>.intoto.jsonl)
-        # The signed Sigstore bundle of the build-provenance attestation, one
-        # per line, so the release itself carries its provenance (Scorecard
-        # Signed-Releases; offline `gh attestation verify --bundle`). Same
-        # design as rust-mirror. Not in SHA256SUMS: it is signed itself, and
-        # SHA256SUMS is one of its subjects. Its subjects must be exactly the
-        # release files: the archives, the SBOM and SHA256SUMS.
+        # The signed Sigstore bundle, one per line; its subjects must be exactly
+        # the signed files. Not in SHA256SUMS: SHA256SUMS is one of its subjects.
         env:
           PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
         run: |
-          mkdir bundle
-          out="bundle/$NAME-$VERSION.intoto.jsonl"
-          python3 tools/scripts/provenance_bundle.py assemble "$out" "$PROVENANCE_BUNDLE"
-          python3 tools/scripts/provenance_bundle.py check "$out" dist/*
+          set -euo pipefail
+          test -f "$PROVENANCE_BUNDLE" && test ! -L "$PROVENANCE_BUNDLE"
+          python3 scripts/release_assets.py stage "$RUNNER_TEMP/dist" "$VERSION" "$RUNNER_TEMP/bundle" "$PROVENANCE_BUNDLE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-provenance
-          path: bundle/*
+          path: ${{ runner.temp }}/bundle/*
           if-no-files-found: error

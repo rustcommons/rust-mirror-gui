@@ -8,42 +8,49 @@ promised for a specific release. Shipped behavior is described in the
 
 rust-mirror-gui adopted the Rust Commons
 [standard release pipeline](https://github.com/rustcommons/.github/blob/main/docs/TRUSTED-PUBLISHING.md)
-on 2026-11-21, following rust-mirror (rust-mirror#75); see the
-[release steps](RELEASING.md#steps). The PR dry run ran `gate` and `build`
-with publish=false. Locally, the gate passed against the existing v0.5.2 tag,
-and it refused an undated or missing CHANGELOG entry. Deferred, not lost:
+on 2026-11-21 (PR #32, following rust-mirror#75). See the
+[release steps](RELEASING.md#steps).
 
-- **First tag run.** `attest`, `publish`, `github-release` and `verify` run
-  only on a tag. Their first real use is the next authorized release. Record
-  then:
-  - the crate attestation and its bundle;
-  - `gh attestation verify --bundle`;
+**Phase 2 is done (2026-11-21, following rust-mirror#76).** `build` now
+calls the reusable `build-binaries.yml`, which:
+- builds the four binaries with every qualification gate (the AlmaLinux 8
+  build, the old-Linux launches without fonts, the Windows capture and the
+  static C runtime);
+- packages, audits and installs the crate;
+- writes one SBOM and one `SHA256SUMS`;
+- signs, on the tag only, in its nested "Checksums and attestations" job.
+
+`github-release` creates the release as a draft with all eight assets, then
+publishes it.
+
+`release-binaries.yml` is retired, so the late-approval timeout of 0.5.2 is
+gone: nothing waits for a hand-made release. The verifiers keep 0.4.3 to
+0.5.2 in their original layouts.
+
+Deferred, not lost:
+
+- **First tag run.** These run only on a tag, so their first real use is
+  the next authorized release:
+  - the nested signing job;
+  - `publish`;
+  - the draft-and-publish `github-release`;
+  - the Windows and Linux `verify` legs.
+
+  Record then:
+  - the certificate (signer `build-binaries.yml`, trigger `push`);
+  - the bundle's eight lines or fewer, and their subjects;
   - the docs.rs wait;
-  - how `release-binaries.yml` attaches to the release that `github-release`
-    created.
-- **Phase 2: binaries in this pipeline** (planned, not approved). Move the
-  four binary builds and their checks into `build` and `attest`:
-  - the AlmaLinux 8 build;
-  - the old-Linux launches without fonts;
-  - the Windows capture;
-  - the SBOM and SLSA L3 signing.
-
-  The result is one `SHA256SUMS`, with every qualification gate kept. Until
-  then, the crate SBOM (`.crates.cdx.json`) and the binaries' SBOM
-  (`.cdx.json`) are separate files, generated the same way from the same
-  lock.
-- **Late-approval timeout** (fixed by phase 2). `release-binaries.yml` waits
-  only 30 minutes for the GitHub Release, which now appears only after the
-  owner approves publishing. A later approval still needs the exact-tag
-  dispatch, as for 0.5.2. `release-binaries.yml` and `build-binaries*.yml`
-  are frozen for this adoption. The one exception is the uploader's narrow
-  allowance for the four crate files.
-- **Release-PR audit overlap.** `build` repeats the package audit and the
-  packaged install at the tag. The manual release-PR checks stay until a
-  release proves the pipeline; then a release PR can cite its dry run
-  instead.
+  - whether any re-run was needed.
+- **Release-PR audit overlap.** Every dry run now repeats the package audit,
+  the packaged install and all qualification gates. The manual release-PR
+  checks stay until a release proves the pipeline; after that, a release
+  PR can cite its dry run instead.
+- **Window checks after publication.** `verify` runs the downloaded worker.
+  The window-drawing checks on the published downloads stay in
+  `verify-release-download.yml`, run by hand after publication. Folding them
+  into `verify` would add the old-distribution containers to every tag run.
 - **Already-published versions.** 0.5.2 and earlier keep their hand-created
-  releases and assets; none is re-tagged or re-released.
+  releases and assets. None is re-tagged or re-released.
 
 ## Deferred: qualification
 

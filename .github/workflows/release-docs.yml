@@ -28,6 +28,8 @@ jobs:
           ref: ${{ github.event_name == 'release' && github.event.repository.default_branch || github.ref }}
       - name: Check committed changelog and versioned notes
         run: python3 scripts/check-release-docs.py --repo "$GITHUB_REPOSITORY"
+      - name: Release-asset helper tests (layouts old and new, draft release, API hosts)
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Check this published GitHub Release
         if: github.event_name == 'release'
         env:

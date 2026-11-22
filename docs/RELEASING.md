@@ -11,14 +11,14 @@ revoked the last one), so nobody publishes from a personal machine.
 
 ## Steps
 
-The crate is released by the Rust Commons
+The crate and the downloads are released by one workflow, the Rust Commons
 [standard release pipeline](https://github.com/rustcommons/.github/blob/main/docs/TRUSTED-PUBLISHING.md)
-(owner-approved 2026-11-21):
+in its form for repositories that also ship binaries (phase 2,
+owner-approved 2026-11-21):
 [`trusted-publishing.yml`](../.github/workflows/trusted-publishing.yml),
-workflow "Trusted publishing", with six jobs: `gate`, `build`, `attest`,
-`publish`, `github-release` and `verify`. The binaries are still built by
-[`release-binaries.yml`](../.github/workflows/release-binaries.yml) on the same
-tag (see [Prebuilt binaries](#prebuilt-binaries)).
+workflow "Trusted publishing". Its jobs are `gate`, `build` (with its nested
+"Checksums and attestations" job), `publish`, `github-release` and `verify`.
+There is no top-level `attest` job.
 
 1. **Release PR (maintainer).** It contains:
    - the version in `Cargo.toml`;
@@ -28,229 +28,262 @@ tag (see [Prebuilt binaries](#prebuilt-binaries)).
      exactly this file, and its first heading is the title);
    - evidence under `docs/evals/`.
 
-   CI must be green at the exact head: the release-documentation check, and
-   the release dry run (all builds, the old-Linux launches without system
-   fonts, the Windows capture). Before a release PR merges, also run the
-   reproducible-build check on it.
+   CI must be green at the exact head, including the pipeline's dry run
+   (`gate` and the full `build`, with publish=false). Before a release PR
+   merges, also run the reproducible-build check on it.
 2. **Merge** (coordinator, owner-authorized): merge normally, and wait for CI
    on the merge commit to pass.
 3. **Tag (maintainer):** push an annotated tag `vX.Y.Z` on the merge. **Do
    not create the GitHub Release by hand**: the pipeline creates it.
-4. **The tag push runs `trusted-publishing.yml`:**
-   - **Release gate:** refuses the run unless
-     - the tag is annotated and names the `Cargo.toml` version;
-     - the commit is on `main` with a successful CI run;
-     - `CHANGELOG.md` has the dated entry and `docs/releases/vX.Y.Z.md`
-       exists;
-     - the release-documentation check passes;
-     - the workspace is exactly the `rust-mirror-gui` crate.
-   - **Build:**
-     - the crate SBOM `rust-mirror-gui-X.Y.Z.crates.cdx.json`
-       (cargo-cyclonedx 0.5.10, from the clean checkout);
-     - `cargo package --locked`, which also builds the packaged source;
-     - a package audit: regular files only, every file equal to the commit,
-       a clean VCS record, and no `fuzz/`, CI, `docs/` or `qualification/`
-       content;
-     - a clean `cargo install --locked` of the packaged crate, whose
-       built-in worker must answer protocol 1;
-     - `SHA256SUMS-crates`.
-   - **Checksums and attestations:** SLSA provenance for the `.crate` and
-     the crate SBOM, saved as `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl`.
-   - **Publish to crates.io:** waits for the owner's approval of the
-     `crates-io` environment. It then:
-     - skips a version crates.io already has, but only if that version is
-       exactly the attested crate;
-     - otherwise publishes with a short-lived token, and only bytes
-       identical (`cmp`) to the attested `.crate`.
-   - **GitHub release:** creates `vX.Y.Z` with `--verify-tag` from the
-     committed notes and attaches the `.crate`, the crate SBOM,
-     `SHA256SUMS-crates` and the crate bundle. A re-run uploads only missing
-     files.
-   - **Verify publication:**
-     - the live body equals the notes;
-     - the crates.io API, the index and the archive agree with the attested
-       `.crate`;
-     - the archive's VCS record is the tag's commit and every file equals the
-       tag;
-     - `gh attestation verify --bundle` passes for the crate and its SBOM;
-     - docs.rs has built it (still pending after 20 minutes is reported as
-       pending, not as a pass);
-     - a clean `cargo install --locked` from crates.io works.
+4. **Release gate:** refuses the run unless
+   - the tag is annotated and names the `Cargo.toml` version;
+   - the commit is on `main` with a successful CI run;
+   - `CHANGELOG.md` has the dated entry and `docs/releases/vX.Y.Z.md`
+     exists;
+   - the release-documentation check passes;
+   - the workspace is exactly the `rust-mirror-gui` crate.
+5. **Build** ([the isolated reusable builder and signer
+   `build-binaries.yml`](../.github/workflows/build-binaries.yml), which runs
+   the [read-only core](../.github/workflows/build-binaries-core.yml)):
+   - the four native builds with every qualification gate (see
+     [Prebuilt binaries](#prebuilt-binaries));
+   - the SBOM;
+   - `cargo package --locked`, which also builds the packaged source;
+   - a package audit: regular files only, every file equal to the commit, a
+     clean VCS record, and no fuzz, CI, docs, qualification or scripts
+     content;
+   - a clean `cargo install --locked` of the packaged crate, whose built-in
+     worker must answer protocol 1;
+   - **one `SHA256SUMS`** over the `.crate`, the four archives and the
+     SBOM.
 
-   Pull requests that change the pipeline, the release scripts, the
-   CHANGELOG or the release notes run `gate` and `build` as a dry run with
-   publish=false.
-5. **Binaries:** the same tag push runs `release-binaries.yml`. It waits up
-   to 30 minutes for the GitHub Release, which `github-release` now creates
-   after the owner approves publishing. It then attaches the archives, the
-   binaries' SBOM, `SHA256SUMS` and `rust-mirror-gui-X.Y.Z.intoto.jsonl`.
+   The SBOM and the crate are made in their own job. The job that collects
+   the built downloads and writes `SHA256SUMS` runs only this repository's
+   standard-library Python scripts: no toolchain and no third-party tool.
+6. **Build / Checksums and attestations** (nested in `build-binaries.yml`):
+   - It runs **only on the v* tag push.** First it re-checks:
+     - the tag, the built commit and this run's commit are the same;
+     - the live tag hasn't moved;
+     - the commit is on `main`;
+     - the exact file set and `SHA256SUMS`;
+     - the crate's VCS record.
+   - It then signs SLSA provenance for all seven files: the crate, the four
+     archives, the SBOM and `SHA256SUMS`.
+   - It binds the SBOM to each archive and to the crate.
+   - It writes the one bundle, `rust-mirror-gui-X.Y.Z.intoto.jsonl`.
 
-   Its uploader accepts a release that already holds exactly the four crate
-   files, and refuses any other existing asset.
+   Because the signer also ran the build, its signature proves that the
+   qualified build produced the bytes. Pull request and manual runs never
+   sign. All of this finishes before the owner's approval.
+7. **Owner approval, then publish** (least privilege for the token). The
+   job:
+   - re-checks `SHA256SUMS`;
+   - skips a version crates.io already has, but only if that version is
+     exactly the attested crate;
+   - otherwise, **before any token exists**, runs `cargo package --locked
+     --no-verify` and requires the bytes to be identical (`cmp`) to the
+     attested `.crate`. The core already built the packaged source, so no
+     crate build code runs in this job;
+   - only then mints the short-lived token, which only the single step
+     `cargo publish --locked --no-verify` receives.
+8. **GitHub release** (automatic). Before any upload it checks:
+   - the exact asset set;
+   - every attestation (signer `build-binaries.yml`, source and signer
+     digest = the tag's commit, GitHub-hosted runners only), online and with
+     the bundle;
+   - that the bundle is GitHub's stored attestation;
+   - that the SBOM attestation of every archive and of the crate carries
+     this exact SBOM.
 
-   **If the approval comes more than 30 minutes after the tag** (as for
-   0.5.2), the tag run times out in `prepare`. It uploads nothing and signs
-   nothing. Then dispatch it on the tag ref:
+   It then creates `vX.Y.Z` as a **draft** from the committed notes (title =
+   the notes' first heading) and checks the draft's tag, title, body and
+   state. It uploads all eight assets, checking each one's name, size and
+   digest, and re-reads the draft. Only then does it publish the release and
+   check it again. The release is marked **latest only if its version is
+   above every published release**, so a patch to an older line doesn't
+   become latest.
+9. **Verify publication** (Windows and Linux runners). Each:
+   - downloads every asset and checks the digests, `SHA256SUMS`, every
+     attestation, the bundle against GitHub's store and the SBOM bindings;
+   - runs the downloaded worker.
 
-   ```sh
-   gh workflow run release-binaries.yml --ref vX.Y.Z -f tag=vX.Y.Z -f dry_run=false
-   ```
+   The Linux leg also checks:
+   - the live body;
+   - that the crates.io API, the index and the archive agree with the
+     attested `.crate`, and that it is exactly the tag's source;
+   - docs.rs (still pending after 20 minutes is reported as pending, not as
+     a pass);
+   - a clean `cargo install --locked` from crates.io.
+10. **Post-publication (maintainer):**
+    - run
+      [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
+      (Actions → Verify release downloads, `tag`). It does the same asset
+      checks, then draws the window: a PrintWindow capture on Windows, and
+      Xvfb in AlmaLinux 8 and Ubuntu 20.04 with no system fonts. It is
+      read-only;
+    - open a publication-record PR citing the pipeline run and that run.
 
-   Never dispatch from another ref, because the signer and source digests
-   must be the release commit. Phase 2 removes this wait (see the
-   [roadmap](ROADMAP.md#standard-release-pipeline)).
-6. **Post-publication (maintainer)**, once both workflows succeeded:
-   - verify the binary assets, `SHA256SUMS` and every attestation (signer
-     `build-binaries.yml`, source and signer digest = the release commit,
-     SBOM bindings, the bundle);
-   - run
-     [`verify-release-download.yml`](../.github/workflows/verify-release-download.yml)
-     (Actions → Verify release downloads, `tag`). It downloads the live
-     binary assets, checks `SHA256SUMS` and the attestations, and runs the
-     Windows and Linux archives. It is read-only;
-   - open a publication-record PR citing both runs.
+### Manual recovery
 
-Releases up to 0.5.2 were published by the earlier `check`/`publish`/`verify`
-workflow, and their GitHub Releases were created by hand. They keep their
-existing assets; none is re-tagged or re-released.
+- **A killed `github-release` job leaves a draft.** Use **"Re-run failed
+  jobs"**, never "Re-run all jobs". "Re-run all jobs" would rebuild and
+  re-sign new bytes, which can't match the draft's assets or the published
+  crate. The re-run:
+  - finds the draft through the releases list (the tags API returns 404
+    for drafts);
+  - refuses unless the draft's tag, title, body and state are exactly ours
+    and every existing asset is one of the eight with identical bytes;
+  - uploads only the missing assets, checks all eight, then publishes.
+
+  A published release is never modified: if it is complete, the re-run
+  changes nothing; if it is incomplete, the re-run is refused for a
+  decision. Two releases for one tag are refused.
+- **An asset half-uploaded by a killed upload** stays on the draft in a
+  non-`uploaded` state, or with a wrong size or digest. The re-run refuses
+  it ("existing asset … differs or is incomplete"). Delete exactly that
+  asset from the **draft** by hand (Releases → the draft → edit → remove the
+  file; or `gh release delete-asset vX.Y.Z NAME`), then re-run the failed
+  jobs.
+- **Never** delete or replace an asset of a published release. If a
+  published file is wrong, ship a new version.
+
+### Asset layout from the next release (after 0.5.2): eight files
+
+| Asset | What it is |
+| --- | --- |
+| `rust-mirror-gui-X.Y.Z.crate` | the crate exactly as published to crates.io |
+| `rust-mirror-gui-X.Y.Z-x86_64-pc-windows-msvc.zip`, `-x86_64-unknown-linux-gnu.tar.gz`, `-aarch64-apple-darwin.tar.gz`, `-x86_64-apple-darwin.tar.gz` | the four downloads (see below) |
+| `rust-mirror-gui-X.Y.Z.cdx.json` | the CycloneDX SBOM: `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
+| `SHA256SUMS` | `sha256sum` format, sorted by file name: the `.crate`, the four archives and the SBOM (six entries) |
+| `rust-mirror-gui-X.Y.Z.intoto.jsonl` | the signed provenance: one Sigstore bundle per line, whose subjects are exactly the other seven files. **Not in `SHA256SUMS`:** it is signed itself, and `SHA256SUMS` is one of its subjects. Scorecard's Signed-Releases check recognizes it, and users verify offline with it |
+
+**Earlier releases keep their layouts,** and the verifiers check each one
+exactly as before (`scripts/release_assets.py`, `layout()`; tested in
+`scripts/test_release_assets.py`):
+
+| Release | Assets | Signer |
+| --- | --- | --- |
+| 0.4.3, 0.5.0 | 4 archives, `SHA256SUMS` | `release-binaries.yml` |
+| 0.5.1 | + SBOM | `build-binaries.yml` (SLSA Build L3; strict signer and source digests) |
+| 0.5.2 | + `rust-mirror-gui-0.5.2.intoto.jsonl` | `build-binaries.yml` |
+
+The interim `SHA256SUMS-crates` and `.crates.*` names from the first
+adoption of the standard pipeline were never released.
+
+`release-binaries.yml` is retired. Every release up to 0.5.2 is complete, so
+no exact-tag recovery is pending. GitHub dispatches only workflows that exist
+on the default branch, so reviving it would need a reviewed PR that restores
+the file. Its last version is at
+[v0.5.2](https://github.com/rustcommons/rust-mirror-gui/blob/v0.5.2/.github/workflows/release-binaries.yml).
 
 ## Prebuilt binaries
 
-Authorized by the owner on 2026-11-15 for every release from then on; 0.4.3
-is the first. Earlier releases stay notes-only (the owner decided not to
-backfill 0.4.2, whose Linux binary did not start without a GPU on Ubuntu
-20.04). The
-asset names and archive layout are shared with rust-mirror.
+The owner authorized prebuilt downloads on 2026-11-15 for every release from
+then on; 0.4.3 is the first. Earlier releases stay notes-only (the owner
+decided not to backfill 0.4.2, whose Linux binary did not start without a GPU
+on Ubuntu 20.04). On 2026-11-21 the owner also authorized attaching the
+published `.crate`. The asset names and archive layout are shared with
+rust-mirror.
 
-| Asset | Built on |
+| Download | Built on |
 | --- | --- |
 | `rust-mirror-gui-X.Y.Z-x86_64-pc-windows-msvc.zip` | `windows-2022` |
 | `rust-mirror-gui-X.Y.Z-x86_64-unknown-linux-gnu.tar.gz` | an `almalinux:8` container (glibc 2.28, pinned by digest) on `ubuntu-22.04`; the run log records the highest `GLIBC_` symbol version. Not musl: the window loads X11, Wayland and GL libraries at run time |
 | `rust-mirror-gui-X.Y.Z-aarch64-apple-darwin.tar.gz` | `macos-15` (macOS 11 or newer) |
 | `rust-mirror-gui-X.Y.Z-x86_64-apple-darwin.tar.gz` | `macos-15-intel` (macOS 11 or newer) |
-| `rust-mirror-gui-X.Y.Z.cdx.json` | the release's CycloneDX SBOM (from 0.5.1 on; name shared with rust-mirror): `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
-| `SHA256SUMS` | `sha256sum` format: lowercase hex, two spaces, sorted by file name; the archives and, from 0.5.1 on, the SBOM |
-| `rust-mirror-gui-X.Y.Z.intoto.jsonl` | from 0.5.2 on (name shared with rust-mirror): the release's signed provenance, made by `build-binaries.yml`. JSON Lines, one Sigstore bundle per line: the SLSA build-provenance attestation, whose subjects are exactly the archives, the SBOM and `SHA256SUMS`. The SBOM attestation stays in GitHub's store. Scorecard's Signed-Releases check recognizes it, and users verify offline with it. **Not in `SHA256SUMS`:** it is signed itself, it is made after `SHA256SUMS` is signed, and `SHA256SUMS` is one of its subjects |
-| `rust-mirror-gui-X.Y.Z.crate`, `rust-mirror-gui-X.Y.Z.crates.cdx.json`, `SHA256SUMS-crates`, `rust-mirror-gui-X.Y.Z.crates.intoto.jsonl` | after 0.5.2: the published crate, its SBOM, their checksums and their provenance bundle, attached by `trusted-publishing.yml`'s `github-release` job before the binaries (owner authorization 2026-11-21). The binary workflows leave them alone, and `verify-release-download.yml` requires exactly these four |
 
 - **Archive layout:** each archive holds one folder,
   `rust-mirror-gui-X.Y.Z-<target>/`, with the executable, `LICENSE`,
   `LICENSE-DejaVu.txt` (the built-in font's license, from 0.5.0 on) and
   `README.txt`. `packaging/package.py` makes the archives with fixed
-  timestamps and permissions.
+  timestamps and permissions. `README.txt`, inside the attested archive:
+  - states the tag and commit the archive was built from ("Built from");
+  - prints the strict verification command: `--signer-workflow
+    …/build-binaries.yml`, `--signer-digest` and `--source-digest` set to
+    that commit, and `--deny-self-hosted-runners`.
 - **How they are built:**
   - Rust 1.95.0 (the MSRV and CI toolchain);
   - `cargo build --release --locked`;
   - on Windows, with `RUSTFLAGS='-C target-feature=+crt-static -C
-    link-arg=/Brepro'` in the release job only (CI and development builds
+    link-arg=/Brepro'` in the release build only (CI and development builds
     are unchanged). `/Brepro` makes the linker write content hashes instead
-    of timestamps, so two builds can be identical. The C runtime
-    is linked statically, so users need no Visual C++ Redistributable. The
-    job lists the executable's DLL imports and fails if any `vcruntime`,
-    `msvcp`, `ucrtbase` or `api-ms-win-crt-*` DLL remains;
-  - from exactly the tagged commit; the workflow refuses if the tag, the
-    commit and `Cargo.toml` disagree.
-- **Smoke tests before upload:**
+    of timestamps, so two builds can be identical. The C runtime is linked
+    statically, so users need no Visual C++ Redistributable. The job lists
+    the executable's DLL imports and fails if any `vcruntime`, `msvcp`,
+    `ucrtbase` or `api-ms-win-crt-*` DLL remains.
+- **Qualification gates in every build** (tag and dry run alike):
   - `rust-mirror-gui --worker --version` must report protocol 1 and its
     rust-mirror version;
-  - on Windows, the window is also launched and captured with PrintWindow,
-    and must not be blank;
+  - on Windows, the window is launched and captured with PrintWindow, and
+    must not be blank;
   - on Linux, the packaged archive is unpacked in `almalinux:8` and
-    `ubuntu:20.04` containers that have only the runtime packages README.txt
-    lists. From 0.5.0 on, every system font directory and the fontconfig
-    settings are deleted first, to prove the built-in fonts suffice. It
-    must start its worker, map the "rust-mirror GUI" window on Xvfb and draw
-    it (`qualification/linux-launch.sh`). Publishing waits for this job.
-- **Attestations (SLSA Build L3 from 0.5.1 on):**
-  - every file (archives, SBOM, `SHA256SUMS`) gets a build-provenance
-    attestation (`actions/attest-build-provenance` v4.2.2);
-  - every archive gets an SBOM attestation (`actions/attest-sbom` v4.1.0);
-  - both are signed inside the reusable `build-binaries.yml`, isolated from
-    the calling workflow, as GitHub describes for SLSA v1 Build Level 3. It
-    runs the build in the read-only `build-binaries-core.yml` first; the
-    same core is what dry runs use;
-  - they are verified before and after the upload.
-
-  Users verify with:
+    `ubuntu:20.04` containers that have only the runtime packages
+    README.txt lists, with every system font directory and the fontconfig
+    settings deleted first. It must start its worker, then map the
+    "rust-mirror GUI" window on Xvfb and draw it
+    (`qualification/linux-launch.sh`). `SHA256SUMS`, and so the signing,
+    wait for this job.
+- **Users verify** with:
 
   ```sh
   gh attestation verify FILE --repo rustcommons/rust-mirror-gui \
     --signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml
   ```
 
-  The release workflow and `verify-release-download.yml` check more: the
-  signer and source digests must both be the release commit
-  (`--signer-digest`, `--source-digest`), and the attestation must come
-  from a GitHub-hosted runner (`--deny-self-hosted-runners`). So the same
-  workflow path at another commit does not pass. For the SBOM attestation
-  they also check that the attested SBOM is exactly the published file.
-- **Provenance on the release itself (from 0.5.2 on):** the attest job in
-  `build-binaries.yml` writes the provenance attestation's Sigstore bundle
-  into
-  `rust-mirror-gui-X.Y.Z.intoto.jsonl` (`scripts/provenance_bundle.py
-  assemble`). The publish job, the only one that can write contents,
-  checks three things before uploading it with the other assets:
-  - its subjects are exactly the release files (`check`);
-  - every file verifies offline against it (`gh attestation verify
-    --bundle`);
-  - its bundle is exactly GitHub's stored provenance attestation
-    (`match`).
-
-  After the upload it compares the live copy. `verify-release-download.yml`
-  repeats these checks. For releases without the file, it builds one from
-  the stored attestations, so every run exercises this path; dry runs can't
-  sign anything.
-
-  0.4.3 and 0.5.0 were signed by `release-binaries.yml` itself (use that
-  file name as the signer) and have no SBOM.
+  The pipeline and `verify-release-download.yml` check more:
+  - the signer and source digests must both be the release commit
+    (`--signer-digest`, `--source-digest`);
+  - the attestation must come from a GitHub-hosted runner
+    (`--deny-self-hosted-runners`), so the same workflow path at another
+    commit doesn't pass;
+  - the attested SBOM must be exactly the published file.
 - **Reproducibility:** `reproducible-build.yml` builds the same commit twice
-  on fresh runners with `build-binaries-core.yml` and compares every executable
-  and archive (weekly, and on PRs that change the build). Its results are
-  recorded as they are; see
+  on fresh runners with `build-binaries-core.yml` and compares every
+  executable, archive and the `.crate` (weekly, and on PRs that change the
+  build). Its results are recorded as they are; see
   [the reproducibility record](evals/2026-11-15-reproducible-builds.md).
-- **What a backfill's provenance names:** it records the workflow run's
-  revision (main), not the tagged commit. Each archive's `README.txt`
-  therefore states the tag and commit it was built from ("Built from"), and
-  that file is inside the attested archive.
 - **Not code-signed:** users see Windows SmartScreen and macOS Gatekeeper
   prompts. The README's install section says what to do.
 
-### Guards
+### Guards and least privilege
 
-- **Release must match:** the workflow uploads only to an existing,
-  published release whose body equals the tagged `docs/releases/vX.Y.Z.md`
-  (`scripts/check-release-docs.py --published-tag`).
-- **Never replace:** it refuses if any asset with the same name is already
-  on the release. It never uses `--clobber` and never deletes an asset. A
-  published asset is never replaced; if a binary is wrong, ship a new
-  version.
-- **Least privilege:**
-  - only the publish job can write contents (upload assets);
-  - only the attest job in `build-binaries.yml` requests an OIDC token and
-    writes attestations, and that workflow runs only when publishing;
-  - dry runs and the reproducibility check call the read-only
-    `build-binaries-core.yml`, which has no signing job;
-  - all other jobs are read-only.
-- **Verified after upload:** the publish job downloads the live assets,
-  checks them against `SHA256SUMS`, and verifies every attestation.
+- **Only the exact tag push signs.** `build-binaries.yml`'s "Checksums and
+  attestations" job is the only job with `id-token: write` and
+  `attestations: write` for signing. It runs only when the gate allowed
+  publishing, the event is the `vX.Y.Z` tag push, and its re-checks pass.
+  The calling `build` job grants these two permissions only for it; every
+  core build job holds `contents: read`.
+- **Only `github-release` writes contents.** It has no OIDC permission.
+  `publish` has OIDC only for the crates.io token, in the `crates-io`
+  environment.
+- **The token sees no build code.** `publish` packages and compares before
+  the crates.io token exists, and only `cargo publish --locked --no-verify`
+  receives it.
+- **No third-party tool next to the payload.** The SBOM tool and the crate
+  build run in their own job, not in the job that collects the downloads
+  and writes `SHA256SUMS`.
+- **Pull requests from forks** don't run `build`, because that reusable call
+  requests `id-token: write`.
+- **Dry runs and the reproducibility check** run the read-only
+  `build-binaries-core.yml`. They upload nothing, and their archives'
+  `README.txt` says "dry run, not a release".
+- **Never replace:** no job uses `--clobber` or deletes an asset.
 
-### Dry runs and backfills
+### Dry runs
 
-- **Pull requests** that change the app (`src/`, `Cargo.toml`,
-  `Cargo.lock`), the workflow, `packaging/` or the launch scripts dry-run
-  their own head as the next release would build it:
-  - the version from `Cargo.toml`, without the tag checks (the tag doesn't
-    exist yet);
-  - build, smoke-test, package, launch-test on old Linux distributions and
-    checksum, on all four targets;
-  - check the committed release documentation;
-  - upload nothing. The archives' `README.txt` says "pull request (dry run,
-    not a release)".
+Pull requests from this repository's branches that change the app (`src/`, `assets/`, `Cargo.toml`,
+`Cargo.lock`), the release workflows or scripts, `packaging/`, the launch
+scripts, the CHANGELOG or the release notes run the pipeline's `gate` and the
+full `build` with publish=false:
+- the version comes from `Cargo.toml`, without the tag checks (the tag
+  doesn't exist yet);
+- all four targets with every qualification gate;
+- the crate (package, audit, install);
+- the SBOM and `SHA256SUMS`;
+- an unsigned placeholder bundle staged on a copy, to prove the exact upload
+  set.
 
-  So a release PR proves its own binaries before the merge.
-- **Manual dispatch** (Actions → Release binaries → Run workflow):
-  - `tag`: an existing release tag;
-  - `dry_run`: true by default, which builds and verifies without uploading.
-
-  To backfill a release, run it first as a dry run, then with `dry_run`
-  off.
+So a release PR proves its binaries and its crate before the merge. A manual
+run (Actions → Trusted publishing → Run workflow) does the same on a branch.
+Changes to the release-verification code also run `verify-release-download.yml`
+against the latest release.

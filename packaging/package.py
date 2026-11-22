@@ -7,7 +7,7 @@ get a fixed timestamp and permissions, so packaging the same files gives the
 same archive. Python 3 standard library only; runs on Windows, Linux and macOS.
 
 Usage: package.py --binary PATH --license PATH --name NAME --version X.Y.Z
-                  --target TRIPLE --out DIR [--glibc 2.NN]
+                  --target TRIPLE --out DIR --commit SHA [--glibc 2.NN]
 Prints the archive path.
 """
 import argparse
@@ -52,8 +52,9 @@ Compare the archive's SHA-256 with the SHA256SUMS file on the release page:
   Windows (PowerShell):  Get-FileHash {archive}
   Linux:                 sha256sum -c --ignore-missing SHA256SUMS
   macOS:                 shasum -a 256 -c --ignore-missing SHA256SUMS
-With the GitHub CLI you can also check where it was built:
-  gh attestation verify {archive} --repo rustcommons/rust-mirror-gui
+With the GitHub CLI you can also check that this release's build workflow
+built it from exactly this commit, on GitHub's own runners:
+{verify}
 
 License: Apache-2.0 (see LICENSE).{font_note}
 """
@@ -88,6 +89,18 @@ right-click the program in Finder and choose Open, or run once in Terminal:
 }
 
 
+def verify_command(archive, commit, family):
+    """The strict check: signer workflow, signer and source digest, hosted runners."""
+    parts = [
+        f"gh attestation verify {archive} --repo rustcommons/rust-mirror-gui",
+        "--signer-workflow rustcommons/rust-mirror-gui/.github/workflows/build-binaries.yml",
+        f"--signer-digest {commit} --source-digest {commit}",
+        "--deny-self-hosted-runners",
+    ]
+    more = " `" if family == "windows" else " \\"  # PowerShell or POSIX shell continuation
+    return "\n".join("  " + ("  " if i else "") + p + (more if i < len(parts) - 1 else "") for i, p in enumerate(parts))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for a in ("binary", "license", "name", "version", "target", "out"):
@@ -95,8 +108,11 @@ def main():
     p.add_argument("--glibc", default="", help="highest GLIBC symbol the binary needs (Linux)")
     p.add_argument("--glibc-built", default="", help="glibc of the build runner (Linux)")
     p.add_argument("--source", default="", help="tag and commit the binary was built from")
+    p.add_argument("--commit", required=True, help="full commit SHA the binary was built from")
     p.add_argument("--font-license", default="", help="license of the font built into the program")
     args = p.parse_args()
+    if len(args.commit) != 40 or any(c not in "0123456789abcdef" for c in args.commit):
+        p.error("--commit must be a full lowercase commit SHA")
     target = args.target
     family = "windows" if "windows" in target else "macos" if "apple" in target else "linux"
     ext = "zip" if family == "windows" else "tar.gz"
@@ -113,6 +129,7 @@ def main():
         source=args.source or "(not recorded)",
         unsigned=UNSIGNED[family],
         archive=archive,
+        verify=verify_command(archive, args.commit, family),
         font_note="\nThe program contains the DejaVu Sans font, under its own free license\n(see LICENSE-DejaVu.txt)." if args.font_license else "",
     )
     if family == "windows":
