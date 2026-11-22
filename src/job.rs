@@ -760,6 +760,29 @@ pub fn human_bytes(n: u64) -> String {
     }
 }
 
+/// Readable age of cached metadata; live job timers use `human_duration`.
+pub fn human_age(d: Duration) -> String {
+    let seconds = d.as_secs();
+    let unit = |n: u64, name: &str| format!("{n} {name}{}", if n == 1 { "" } else { "s" });
+    if seconds < 60 {
+        return "less than a minute".into();
+    }
+    if seconds < 60 * 60 {
+        return unit(seconds / 60, "minute");
+    }
+    let hours = seconds / 3600;
+    if hours < 48 {
+        let mut age = unit(hours, "hour");
+        let minutes = (seconds / 60) % 60;
+        if hours < 6 && minutes > 0 {
+            age.push(' ');
+            age.push_str(&unit(minutes, "minute"));
+        }
+        return age;
+    }
+    format!("{} days", seconds / 86400)
+}
+
 pub fn human_duration(d: Duration) -> String {
     let s = d.as_secs();
     if d < Duration::from_secs(10) && d.subsec_millis() != 0 {
@@ -776,6 +799,38 @@ pub fn human_duration(d: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_age_boundaries_and_singulars() {
+        for (seconds, expected) in [
+            (0, "less than a minute"),
+            (59, "less than a minute"),
+            (60, "1 minute"),
+            (119, "1 minute"),
+            (120, "2 minutes"),
+            (59 * 60, "59 minutes"),
+            (60 * 60 - 1, "59 minutes"),
+            (60 * 60, "1 hour"),
+            (61 * 60, "1 hour 1 minute"),
+            (62 * 60, "1 hour 2 minutes"),
+            (2 * 3600 + 60, "2 hours 1 minute"),
+            (5 * 3600 + 30 * 60, "5 hours 30 minutes"),
+            (6 * 3600 - 1, "5 hours 59 minutes"),
+            (6 * 3600, "6 hours"),
+            (6 * 3600 + 60, "6 hours"),
+            (24 * 3600, "24 hours"),
+            (47 * 3600, "47 hours"),
+            (48 * 3600 - 1, "47 hours"),
+            (48 * 3600, "2 days"),
+            (193 * 3600 + 6 * 60, "8 days"),
+        ] {
+            assert_eq!(
+                human_age(Duration::from_secs(seconds)),
+                expected,
+                "{seconds} seconds"
+            );
+        }
+    }
 
     #[test]
     fn bytes_events_follow_protocol_1_counters() {

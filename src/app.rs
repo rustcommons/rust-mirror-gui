@@ -1,7 +1,7 @@
 //! The egui user interface. It only edits forms, starts rust-mirror processes
 //! and shows what they report; it never blocks on the backend.
 use crate::config::{ConfigDraft, SelectionDraft, TESTED_HOSTS};
-use crate::job::{human_bytes, human_duration, Health, Job, LogKind};
+use crate::job::{human_age, human_bytes, human_duration, Health, Job, LogKind};
 use crate::ops::{self, Op, SyncMode};
 use crate::protocol::BackendVersion;
 use crate::settings::{self, Settings};
@@ -1990,7 +1990,7 @@ fn release_status(catalog: Option<&serde_json::Value>) -> String {
     let when = if age < 120 {
         "just now".to_string()
     } else {
-        format!("{} old", human_duration(Duration::from_secs(age)))
+        format!("{} old", human_age(Duration::from_secs(age)))
     };
     let cached = c.get("cached").and_then(|x| x.as_bool()).unwrap_or(false);
     let warn = c

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **Metadata freshness:** crate previews and release-list status use readable
+  ages such as "8 days ago" and "3 hours old", with minutes included for
+  ages under six hours. Live job timers keep their existing format.
+
 - **Crate preview:** group updated-index metadata warnings into one summary
   with distinct version/crate counts and changed fields. Details start
   collapsed, are grouped by crate, and show at most 200 heading/version rows
