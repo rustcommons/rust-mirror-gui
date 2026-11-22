@@ -6,6 +6,9 @@
   provenance and SBOM attestations, replacing the deprecated SBOM action
   and the provenance wrapper. Subjects, bundle collection, permissions
   and the signer-workflow verification policy are unchanged.
+- **Repository:** update locked `url` to 2.5.9 (and its required
+  `form_urlencoded` 1.2.3) in both workspaces to fix RUSTSEC-2026-0592
+  and restore the cargo-deny gate. No new dependency is added.
 
 - **Release pipeline, phase 2** (repository only; no crate or behaviour
   change). `trusted-publishing.yml`'s `build` now calls the reusable
