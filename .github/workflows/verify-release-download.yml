@@ -25,7 +25,7 @@ env:
   NAME: rust-mirror-gui
   REPO: ${{ github.repository }}
   # A pull request checks the latest recorded release.
-  TAG: ${{ inputs.tag || 'v0.5.3' }}
+  TAG: ${{ inputs.tag || 'v0.5.4' }}
 # One run per PR: a new push cancels the PR's older runs (pushes to main and
 # tags are never cancelled).
 concurrency:
