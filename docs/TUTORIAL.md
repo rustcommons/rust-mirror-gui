@@ -586,10 +586,10 @@ Open **Crate preview & sync**:
 5. Press **Preview**. rust-mirror reads the crates.io index and saves the
    complete list in the output folder. Nothing large is downloaded.
 
-![Preview: 12 versions with sizes, flags and the reason each is included](screenshots/crates-3-preview.png)
+![Synthetic fake-backend preview: sizes, grouped warnings and the reason each version is included](screenshots/crates-3-preview.png)
 
 How to read it:
-- **"8 crates, 12 versions, 22 files"**: the whole mirror. Files include the
+- **"3 crates, 5 versions, 10 files"**: the whole mirror. Files include the
   index entries.
 - **"crates.io index read 8 days ago"**: freshness uses readable minutes,
   hours or days, and shows a warning after a day. Preview again into a new
