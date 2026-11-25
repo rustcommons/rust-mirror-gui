@@ -7,7 +7,9 @@
   manifest before creating a crates.io token, using the pinned Rust Commons
   release key in temporary GnuPG homes. Public verification checks that
   signature and every listed payload; earlier releases keep their layouts.
-  PR tests exercise signing with throwaway keys only.
+  Revoked signing keys are refused; signatures made before a subkey's expiry
+  remain verifiable after rotation. OpenPGP checks run on Linux; Windows
+  retains checksum and attestation verification. PR tests use throwaway keys.
 
 - **Repository:** record the 0.5.4 publication, main CI before tagging,
   the complete Trusted Publishing run and public asset verification.

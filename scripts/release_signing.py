@@ -67,24 +67,43 @@ def _import_public(home, key, expected_primary):
         raise ValueError('unexpected release public-key primary fingerprint')
 
 
-def _require_validsig(status, expected_primary):
-    valid = [line.split() for line in status.splitlines()
-             if line.startswith(b'[GNUPG:] VALIDSIG ')]
-    # GnuPG appends the primary fingerprint for a subkey signature. For a
-    # primary-key signature it may omit that optional field.
-    if len(valid) != 1 or len(valid[0]) not in (11, 12):
-        raise ValueError('expected exactly one GnuPG VALIDSIG')
+def _require_validsig(status, expected_primary, key_listing=b''):
+    lines = [line.split() for line in status.splitlines()
+             if line.startswith(b'[GNUPG:] ')]
+    refused = {b'REVKEYSIG', b'KEYREVOKED', b'BADSIG', b'ERRSIG', b'EXPSIG', b'NO_PUBKEY'}
+    if any(len(line) > 1 and line[1] in refused for line in lines):
+        raise ValueError('revoked, bad, expired signature or unknown signing key')
+    good = [line for line in lines if line[1] in (b'GOODSIG', b'EXPKEYSIG')]
+    valid = [line for line in lines if line[1] == b'VALIDSIG']
+    if len(good) != 1 or len(valid) != 1 or len(valid[0]) not in (11, 12):
+        raise ValueError('expected exactly one good signature and one GnuPG VALIDSIG')
     fields = valid[0]
-    primary = fields[11] if len(fields) == 12 else fields[2]
-    if primary != expected_primary.encode('ascii'):
+    if fields[-1] != expected_primary.encode('ascii'):
         raise ValueError('signature primary fingerprint is not the release key')
+    if any(line[1] in (b'EXPKEYSIG', b'KEYEXPIRED') for line in lines):
+        # Rotation must not invalidate releases signed before the subkey expired.
+        expiry = None
+        for row in key_listing.splitlines():
+            columns = row.split(b':')
+            if columns[0] in (b'pub', b'sub'):
+                expiry = columns[6]
+            elif columns[0] == b'fpr' and columns[9] == fields[2]:
+                break
+        else:
+            expiry = None
+        try:
+            if not expiry or int(expiry) <= 0 or int(fields[4]) >= int(expiry):
+                raise ValueError('signature was not made before signing-key expiry')
+        except (ValueError, OverflowError) as error:
+            raise ValueError('signature was not made before signing-key expiry') from error
 
 
 def _verify(manifest, signature, home, public_key, expected_primary):
     """Low-level primitive also exercised with throwaway keys by unit tests."""
     _import_public(home, public_key, expected_primary)
     status = _gpg(home, '--status-fd', '1', '--verify', str(signature.resolve()), str(manifest.resolve()))
-    _require_validsig(status, expected_primary)
+    _require_validsig(status, expected_primary,
+                      _gpg(home, '--with-colons', '--fingerprint', '--list-keys'))
 
 
 def _sign(manifest, signature, home, subkey, passphrase):

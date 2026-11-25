@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -146,12 +147,91 @@ class ThrowawayKey(unittest.TestCase):
                 self.assertFalse(self.signature.exists())
 
 
+class KeyLifecycle(unittest.TestCase):
+    def test_revoked_subkey_is_refused_even_with_validsig(self):
+        with rs.temporary_home() as signer, tempfile.TemporaryDirectory() as folder:
+            manifest, signature = Path(folder) / 'SHA256SUMS', Path(folder) / 'SHA256SUMS.asc'
+            manifest.write_text('throwaway manifest\n')
+            rs._gpg(signer, '--pinentry-mode', 'loopback', '--passphrase', '',
+                    '--quick-generate-key', 'Revocation test <test@example.invalid>', 'ed25519', 'cert', '0')
+            primary = rs.primary_fingerprints(signer)[0]
+            rs._gpg(signer, '--pinentry-mode', 'loopback', '--passphrase', '',
+                    '--quick-add-key', primary, 'ed25519', 'sign', '0')
+            subkey = [line.split(b':')[9].decode() for line in
+                      rs._gpg(signer, '--with-colons', '--fingerprint', '--list-keys').splitlines()
+                      if line.startswith(b'fpr:')][-1]
+            rs._sign(manifest, signature, signer, subkey, b'')
+            rs._gpg(signer, '--pinentry-mode', 'loopback', '--command-fd', '0', '--edit-key', primary,
+                    input=b'key 1\nrevkey\ny\n0\n\ny\nsave\n')
+            public = rs._gpg(signer, '--armor', '--export', primary)
+            with rs.temporary_home() as verifier:
+                rs._import_public(verifier, public, primary)
+                status = rs._gpg(verifier, '--status-fd', '1', '--verify', str(signature), str(manifest))
+                self.assertIn(b'VALIDSIG', status)
+                self.assertIn(b'REVKEYSIG', status)
+                with self.assertRaisesRegex(ValueError, 'revoked'):
+                    rs._require_validsig(status, primary)
+            with rs.temporary_home() as verifier, self.assertRaisesRegex(ValueError, 'revoked'):
+                rs._verify(manifest, signature, verifier, public, primary)
+
+    def test_expired_subkey_accepts_only_a_signature_before_expiry(self):
+        created = int(time.time()) - 3 * 86400
+        clock = ('--faked-system-time', str(created) + '!')
+        with rs.temporary_home() as signer, tempfile.TemporaryDirectory() as folder:
+            manifest, signature = Path(folder) / 'SHA256SUMS', Path(folder) / 'SHA256SUMS.asc'
+            manifest.write_text('historical throwaway manifest\n')
+            rs._gpg(signer, *clock, '--pinentry-mode', 'loopback', '--passphrase', '',
+                    '--quick-generate-key', 'Expiry test <test@example.invalid>', 'ed25519', 'cert', '0')
+            primary = rs.primary_fingerprints(signer)[0]
+            rs._gpg(signer, *clock, '--pinentry-mode', 'loopback', '--passphrase', '',
+                    '--quick-add-key', primary, 'ed25519', 'sign', '1d')
+            listing = rs._gpg(signer, '--with-colons', '--fingerprint', '--list-keys')
+            subkey = [line.split(b':')[9].decode() for line in listing.splitlines()
+                      if line.startswith(b'fpr:')][-1]
+            rs._gpg(signer, '--faked-system-time', str(created + 3600) + '!',
+                    '--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--local-user', subkey + '!',
+                    '--armor', '--detach-sign', '--output', str(signature), str(manifest), input=b'\n')
+            public = rs._gpg(signer, '--armor', '--export', primary)
+            with rs.temporary_home() as verifier:
+                rs._verify(manifest, signature, verifier, public, primary)
+                status = rs._gpg(verifier, '--status-fd', '1', '--verify', str(signature), str(manifest))
+                self.assertIn(b'EXPKEYSIG', status)
+                self.assertIn(b'KEYEXPIRED', status)
+                expiry = created + 86400
+                for timestamp in (expiry, expiry + 1):
+                    altered = b'\n'.join(b' '.join(row.split()[:4] + [str(timestamp).encode()] + row.split()[5:])
+                                         if row.startswith(b'[GNUPG:] VALIDSIG ') else row
+                                         for row in status.splitlines())
+                    with self.assertRaisesRegex(ValueError, 'before signing-key expiry'):
+                        rs._require_validsig(altered, primary, listing)
+                with self.assertRaises(ValueError):
+                    rs._require_validsig(status, primary, b'')
+
+    def test_all_refused_statuses_and_signature_counts(self):
+        primary = rs.PRIMARY_FINGERPRINT
+        valid = f'[GNUPG:] VALIDSIG {primary} 2026-11-22 1795305600 0 4 0 22 8 00 {primary}\n'.encode()
+        good = b'[GNUPG:] GOODSIG test Test key\n'
+        rs._require_validsig(good + valid, primary)
+        for bad in ('REVKEYSIG', 'KEYREVOKED', 'BADSIG', 'ERRSIG', 'EXPSIG', 'NO_PUBKEY'):
+            with self.subTest(status=bad), self.assertRaises(ValueError):
+                rs._require_validsig(good + valid + f'[GNUPG:] {bad} test\n'.encode(), primary)
+        for status in (valid, good + good + valid, good + valid + valid):
+            with self.assertRaises(ValueError):
+                rs._require_validsig(status, primary)
+
+
 class Workflow(unittest.TestCase):
     def test_signing_precedes_token_and_is_not_skipped_for_an_existing_crate(self):
         text = (rs.PUBLIC_KEY.parent / 'workflows' / 'trusted-publishing.yml').read_text()
         signing = text.index('name: Sign and verify the OpenPGP checksum signature')
         token = text.index('uses: rust-lang/crates-io-auth-action@')
         self.assertLess(signing, token)
+        publish = text[text.index('\n  publish:\n'):text.index('\n  github-release:\n')]
+        before_signing = publish[:publish.index('name: Sign and verify')]
+        for line in before_signing.splitlines():
+            if 'uses:' in line:
+                self.assertTrue(line.split('uses:', 1)[1].strip().startswith('actions/'))
+        self.assertIn('rustup toolchain install 1.95.0 --profile minimal', publish)
         step = text[signing:text.index('      - ', signing)]
         self.assertNotIn('if:', step)
         self.assertIn('RELEASE_SIGNING_PASSPHRASE:', step)

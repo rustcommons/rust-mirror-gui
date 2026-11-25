@@ -77,6 +77,8 @@ There is no top-level `attest` job.
    sign. All of this finishes before the owner's approval.
 7. **Owner approval, then publish** (least privilege for the token). The
    job:
+   - installs the pinned Rust toolchain using the runner's own `rustup`,
+     without executing a third-party action before signing secrets are used;
    - re-checks `SHA256SUMS`;
    - skips a version crates.io already has, but only if that version is
      exactly the attested crate;
@@ -115,9 +117,13 @@ There is no top-level `attest` job.
 9. **Verify publication** (Windows and Linux runners). Each:
    - downloads every asset and checks the digests, `SHA256SUMS`, every
      attestation, the bundle against GitHub's store and the SBOM bindings;
-   - for releases after 0.5.4, verifies `SHA256SUMS.asc` in a temporary
-     public-only GnuPG home and runs `sha256sum --check` for every entry;
    - runs the downloaded worker.
+
+   OpenPGP checks run **only on Linux**, both here and in
+   `verify-release-download.yml`'s `assets` job. Windows retains its checksum
+   and attestation checks; it does not import keys or invoke GnuPG. For
+   releases after 0.5.4 the Linux verifier checks `SHA256SUMS.asc` in a
+   temporary public-only home and runs `sha256sum --check` for every entry.
 
    The Linux leg also checks:
    - the live body;
@@ -326,8 +332,14 @@ against the constant, using only the committed public key. Its production
 CLI accepts no test mode, alternative key or fingerprint override. Tests
 import the committed key and check its primary fingerprint, and separately
 generate ephemeral certifying/signing keys to exercise the crypto path.
-These tests run in the release gate's PR dry run and the release-docs check;
-the public-download Windows job also exercises the portable verifier tests.
+These tests run on Linux in the release gate's PR dry run and the
+release-docs check. The verifier refuses revoked keys and bad, expired or
+unknown signatures even if GnuPG also emits `VALIDSIG`. It requires exactly
+one `GOODSIG` (or `EXPKEYSIG`) and one `VALIDSIG` ending in the pinned primary
+fingerprint. A signing subkey that has since expired is accepted only when
+the signature timestamp is strictly before that subkey's recorded expiry.
+This keeps historical releases verifiable after routine key rotation;
+revocation always fails verification.
 
 For manual verification, download the manifest, its signature and every
 listed payload. Import the committed public key into a fresh keyring, check

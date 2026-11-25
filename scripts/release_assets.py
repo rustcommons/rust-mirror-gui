@@ -320,6 +320,9 @@ def git(root, *args):
 
 def verify_openpgp(folder, lay):
     if lay['openpgp']:
+        if sys.platform == 'win32':
+            print('OpenPGP verification runs on the Linux verify leg; Windows checks hashes and attestations.', flush=True)
+            return
         release_signing.verify(folder)
         # All six names and hashes must also equal the exact expected manifest;
         # callers check that independently before running any downloaded worker.

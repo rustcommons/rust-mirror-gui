@@ -173,6 +173,14 @@ class OpenPGPVerification(unittest.TestCase):
             verify.assert_not_called()
             run.assert_not_called()
 
+    def test_windows_leaves_openpgp_to_linux_without_invoking_gpg(self):
+        with mock.patch.object(ra.sys, 'platform', 'win32'), \
+                mock.patch.object(ra.release_signing, 'verify') as verify, \
+                mock.patch.object(ra.subprocess, 'run') as run:
+            ra.verify_openpgp(Path('unused'), ra.layout('0.5.5'))
+            verify.assert_not_called()
+            run.assert_not_called()
+
     def test_new_releases_verify_signature_and_check_every_listed_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)

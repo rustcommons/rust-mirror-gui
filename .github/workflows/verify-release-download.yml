@@ -104,10 +104,8 @@ jobs:
             .github
           persist-credentials: false
       # The same check trusted-publishing.yml's `verify` job runs on Windows:
-      # every asset and attestation, then the downloaded worker.
-      - name: OpenPGP signing and verifier tests (throwaway keys only)
-        shell: bash
-        run: python -m unittest discover -s tools/scripts -p 'test_release_signing.py' -v
+      # every checksum and attestation, then the downloaded worker.
+      # OpenPGP verification runs in the Linux assets job, not on Windows.
       - name: Full asset verification on Windows; run the downloaded worker
         shell: bash
         env:
