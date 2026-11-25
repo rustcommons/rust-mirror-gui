@@ -80,7 +80,8 @@ def _require_validsig(status, expected_primary, key_listing=b''):
     fields = valid[0]
     if fields[-1] != expected_primary.encode('ascii'):
         raise ValueError('signature primary fingerprint is not the release key')
-    if any(line[1] in (b'EXPKEYSIG', b'KEYEXPIRED') for line in lines):
+    if any(line[1] == b'EXPKEYSIG' for line in lines):
+        # KEYEXPIRED may describe a sibling, not the subkey that signed.
         # Rotation must not invalidate releases signed before the subkey expired.
         expiry = None
         for row in key_listing.splitlines():

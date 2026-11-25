@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **Repository:** accept release signatures from a current signing subkey
+  even when an older sibling subkey has expired. Historical signatures made
+  before the old subkey expired remain verifiable.
+
 - **Repository:** add an OpenPGP `SHA256SUMS.asc` asset to releases after
   0.5.4. The owner-approved publish job signs and verifies the checksum
   manifest before creating a crates.io token, using the pinned Rust Commons

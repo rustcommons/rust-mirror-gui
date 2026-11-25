@@ -338,8 +338,10 @@ unknown signatures even if GnuPG also emits `VALIDSIG`. It requires exactly
 one `GOODSIG` (or `EXPKEYSIG`) and one `VALIDSIG` ending in the pinned primary
 fingerprint. A signing subkey that has since expired is accepted only when
 the signature timestamp is strictly before that subkey's recorded expiry.
-This keeps historical releases verifiable after routine key rotation;
-revocation always fails verification.
+Only `EXPKEYSIG` triggers that expiry check: `KEYEXPIRED` may refer to an
+expired sibling while the actual signing subkey is current. This keeps
+historical releases verifiable after routine key rotation; revocation
+always fails verification.
 
 For manual verification, download the manifest, its signature and every
 listed payload. Import the committed public key into a fresh keyring, check

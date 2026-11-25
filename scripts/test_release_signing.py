@@ -174,7 +174,7 @@ class KeyLifecycle(unittest.TestCase):
             with rs.temporary_home() as verifier, self.assertRaisesRegex(ValueError, 'revoked'):
                 rs._verify(manifest, signature, verifier, public, primary)
 
-    def test_expired_subkey_accepts_only_a_signature_before_expiry(self):
+    def test_expired_old_and_nonexpiring_new_sibling_subkey_signatures(self):
         created = int(time.time()) - 3 * 86400
         clock = ('--faked-system-time', str(created) + '!')
         with rs.temporary_home() as signer, tempfile.TemporaryDirectory() as folder:
@@ -191,6 +191,14 @@ class KeyLifecycle(unittest.TestCase):
             rs._gpg(signer, '--faked-system-time', str(created + 3600) + '!',
                     '--pinentry-mode', 'loopback', '--passphrase-fd', '0', '--local-user', subkey + '!',
                     '--armor', '--detach-sign', '--output', str(signature), str(manifest), input=b'\n')
+            rs._gpg(signer, '--pinentry-mode', 'loopback', '--passphrase', '',
+                    '--quick-add-key', primary, 'ed25519', 'sign', '0')
+            new_subkey = [line.split(b':')[9].decode() for line in
+                          rs._gpg(signer, '--with-colons', '--fingerprint', '--list-keys').splitlines()
+                          if line.startswith(b'fpr:')][-1]
+            self.assertNotEqual(subkey, new_subkey)
+            new_signature = Path(folder) / 'new-subkey.asc'
+            rs._sign(manifest, new_signature, signer, new_subkey, b'')
             public = rs._gpg(signer, '--armor', '--export', primary)
             with rs.temporary_home() as verifier:
                 rs._verify(manifest, signature, verifier, public, primary)
@@ -206,6 +214,16 @@ class KeyLifecycle(unittest.TestCase):
                         rs._require_validsig(altered, primary, listing)
                 with self.assertRaises(ValueError):
                     rs._require_validsig(status, primary, b'')
+
+            with rs.temporary_home() as verifier:
+                rs._import_public(verifier, public, primary)
+                status = rs._gpg(verifier, '--status-fd', '1', '--verify', str(new_signature), str(manifest))
+                self.assertIn(b'KEYEXPIRED', status)  # Expired sibling, not the actual signing subkey.
+                self.assertIn(b'GOODSIG', status)
+                self.assertNotIn(b'EXPKEYSIG', status)
+                self.assertIn(new_subkey.encode(), status)
+            with rs.temporary_home() as verifier:
+                rs._verify(manifest, new_signature, verifier, public, primary)
 
     def test_all_refused_statuses_and_signature_counts(self):
         primary = rs.PRIMARY_FINGERPRINT
