@@ -10,6 +10,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release_assets as ra  # noqa: E402
@@ -46,13 +48,31 @@ class Layouts(unittest.TestCase):
         self.assertEqual(lay['signed'], lay['summed'] + ['SHA256SUMS'])
 
     def test_after_052_one_sha256sums_also_lists_the_crate(self):
-        for v in ('0.5.3', '0.6.0', '1.0.0'):
+        for v in ('0.5.3', '0.5.4'):
             lay = ra.layout(v)
             self.assertEqual(lay['summed'], sorted(archives(v) + [f'{N}-{v}.cdx.json', f'{N}-{v}.crate']))
             self.assertEqual(lay['assets'], sorted(lay['summed'] + ['SHA256SUMS', f'{N}-{v}.intoto.jsonl']))
             self.assertEqual(len(lay['assets']), 8)
             self.assertEqual(lay['sbom_subjects'], sorted(archives(v) + [f'{N}-{v}.crate']))
             self.assertEqual((lay['signer'], lay['strict']), ('build-binaries.yml', True))
+
+    def test_after_054_adds_only_the_openpgp_signature(self):
+        for v in ('0.5.5', '0.6.0', '1.0.0'):
+            lay = ra.layout(v)
+            self.assertEqual(lay['openpgp'], 'SHA256SUMS.asc')
+            self.assertEqual(len(lay['assets']), 9)
+            self.assertEqual(len(lay['summed']), 6)
+            self.assertEqual(len(lay['signed']), 7)
+            self.assertIn('SHA256SUMS.asc', lay['assets'])
+            self.assertNotIn('SHA256SUMS.asc', lay['signed'])
+            self.assertNotIn('SHA256SUMS.asc', lay['summed'])
+            with self.assertRaises(ValueError):
+                ra.check_names(v, [n for n in lay['assets'] if n != 'SHA256SUMS.asc'])
+        for v in ('0.4.3', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4'):
+            lay = ra.layout(v)
+            self.assertIsNone(lay['openpgp'])
+            with self.assertRaises(ValueError):
+                ra.check_names(v, lay['assets'] + ['SHA256SUMS.asc'])
 
     def test_sha256sums_order_is_byte_order(self):
         lay = ra.layout('0.5.3')
@@ -63,9 +83,10 @@ class Layouts(unittest.TestCase):
         for v in ('0.5.2', '0.4.0', '0.5.3'):
             lay = ra.layout(v, build=True)
             self.assertEqual(lay['summed'], sorted(archives(v) + [f'{N}-{v}.cdx.json', f'{N}-{v}.crate']))
-            self.assertEqual(len(lay['assets']), 8)
-        self.assertEqual(ra.layout('0.5.3', build=True), ra.layout('0.5.3'))
+            self.assertEqual(len(lay['assets']), 9)
+        self.assertEqual(ra.layout('0.5.5', build=True), ra.layout('0.5.5'))
         self.assertNotEqual(ra.layout('0.5.2', build=True), ra.layout('0.5.2'))
+        self.assertNotEqual(ra.layout('0.5.4', build=True), ra.layout('0.5.4'))
 
     def test_no_downloads_before_043_and_no_odd_versions(self):
         for v in ('0.4.2', '0.1.0', 'v0.5.3', '0.5', '0.5.3-rc.1'):
@@ -142,6 +163,36 @@ class Files(unittest.TestCase):
         short.write_text(json.dumps(placeholder_bundle(self.dir, lay['summed'])))
         with self.assertRaises(SystemExit):
             ra.stage(self.dir, '0.5.3', Path(tempfile.mkdtemp()), [short])
+
+
+class OpenPGPVerification(unittest.TestCase):
+    def test_earlier_releases_do_not_call_gpg_or_change_checksum_checks(self):
+        with mock.patch.object(ra.release_signing, 'verify') as verify, mock.patch.object(ra.subprocess, 'run') as run:
+            for version in ('0.4.3', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4'):
+                ra.verify_openpgp(Path('unused'), ra.layout(version))
+            verify.assert_not_called()
+            run.assert_not_called()
+
+    def test_windows_leaves_openpgp_to_linux_without_invoking_gpg(self):
+        with mock.patch.object(ra.sys, 'platform', 'win32'), \
+                mock.patch.object(ra.release_signing, 'verify') as verify, \
+                mock.patch.object(ra.subprocess, 'run') as run:
+            ra.verify_openpgp(Path('unused'), ra.layout('0.5.5'))
+            verify.assert_not_called()
+            run.assert_not_called()
+
+    def test_new_releases_verify_signature_and_check_every_listed_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            lay = ra.layout('0.5.5')
+            fake_files(folder, lay['summed'])
+            ra.write_sums(folder, '0.5.5')
+            with mock.patch.object(ra.release_signing, 'verify') as verify:
+                ra.verify_openpgp(folder, lay)
+                verify.assert_called_once_with(folder)
+                (folder / lay['summed'][-1]).unlink()
+                with self.assertRaises(subprocess.CalledProcessError):
+                    ra.verify_openpgp(folder, lay)
 
 
 class Api(unittest.TestCase):
@@ -227,6 +278,23 @@ class Publish(unittest.TestCase):
         ra.publish_release(self.TAG, self.NOTES, self.dir, gh)
         self.assertEqual(gh.patch, {'draft': False, 'make_latest': 'false'})
 
+    def test_new_layout_uploads_nine_assets_and_never_replaces_a_signature(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            version, tag = '0.5.5', 'v0.5.5'
+            lay = ra.layout(version)
+            fake_files(folder, lay['assets'])
+            notes = '# rust-mirror-gui 0.5.5: notes\n'
+            gh = FakeGitHub()
+            release = ra.publish_release(tag, notes, folder, gh)
+            self.assertEqual(len(release['assets']), 9)
+            signature = next(a for a in release['assets'] if a['name'] == 'SHA256SUMS.asc')
+            signature['digest'] = 'sha256:' + '0' * 64
+            gh.calls.clear()
+            with self.assertRaisesRegex(ValueError, 'never replacing'):
+                ra.publish_release(tag, notes, folder, gh)
+            self.assertEqual({method for method, _ in gh.calls}, {'GET'})
+
     def test_is_highest(self):
         rel = lambda t, **k: {'tag_name': t, 'draft': False, 'prerelease': False, **k}
         self.assertTrue(ra.is_highest('v0.5.3', [rel('v0.5.2'), rel('v0.4.10')]))
@@ -286,7 +354,8 @@ class Verify(unittest.TestCase):
 
     def test_live_asset_set_must_be_the_versions_layout(self):
         # These fail before anything is downloaded.
-        cases = [('0.5.2', ra.layout('0.5.2')['assets'] + [f'{N}-0.5.2.crate']),
+        cases = [('0.5.5', [n for n in ra.layout('0.5.5')['assets'] if n != 'SHA256SUMS.asc']),
+                 ('0.5.2', ra.layout('0.5.2')['assets'] + [f'{N}-0.5.2.crate']),
                  ('0.5.3', [n.replace('0.5.2', '0.5.3') for n in ra.layout('0.5.2')['assets']]),
                  ('0.5.3', ra.layout('0.5.3')['assets'] + ['SHA256SUMS-crates']),
                  ('0.5.0', ra.layout('0.5.1')['assets'])]

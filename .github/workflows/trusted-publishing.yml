@@ -17,7 +17,7 @@ name: Trusted publishing
 on:
   push:
     tags: ['v*']
-  # Dry runs: gate and the full build, never sign or publish.
+  # Dry runs: gate and full build; OpenPGP tests use only ephemeral keys.
   pull_request:
     paths:
       - '.github/workflows/trusted-publishing.yml'
@@ -27,6 +27,9 @@ on:
       - 'scripts/check-release-docs.py'
       - 'scripts/release_assets.py'
       - 'scripts/provenance_bundle.py'
+      - 'scripts/release_signing.py'
+      - 'scripts/test_release_signing.py'
+      - '.github/release-signing-key.asc'
       - 'src/**'
       - 'assets/**'
       - 'Cargo.toml'
@@ -72,6 +75,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
+      - name: Test OpenPGP signing and pinned verification (throwaway keys only)
+        run: python3 -m unittest discover -s scripts -p 'test_release_signing.py' -v
       - name: Decide whether this run may publish
         id: gate
         env:
@@ -142,7 +147,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@1961bfc0c4a8bf07e0a0c98e1e2459c642ea70a0 # 1.95.0
+      # Use the runner's rustup: no third-party action executes before signing secrets.
+      - name: Install the pinned Rust toolchain with runner rustup
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
       - name: Rust toolchain in use
         run: rustc --version && cargo --version
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -180,6 +189,40 @@ jobs:
             cmp "target/package/$crate-$VERSION.crate" "$RUNNER_TEMP/dist/$crate-$VERSION.crate"
             echo "$crate $VERSION: identical to the attested crate"
           done
+      # Always produce the signature, including a retry after registry publication.
+      # No token exists yet, and no crate code compiles in this job.
+      - name: Sign and verify the OpenPGP checksum signature
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          RELEASE_SIGNING_PASSPHRASE: ${{ secrets.RELEASE_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          signing_home=''
+          verification_home=''
+          cleanup() {
+            if [ -n "$signing_home" ]; then
+              GNUPGHOME="$signing_home" gpgconf --kill gpg-agent || true
+              rm -rf -- "$signing_home"
+            fi
+            if [ -n "$verification_home" ]; then
+              GNUPGHOME="$verification_home" gpgconf --kill gpg-agent || true
+              rm -rf -- "$verification_home"
+            fi
+          }
+          trap cleanup EXIT
+          signing_home=$(mktemp -d)
+          verification_home=$(mktemp -d)
+          chmod 700 "$signing_home" "$verification_home"
+          GNUPGHOME="$signing_home" python3 scripts/release_signing.py sign "$RUNNER_TEMP/dist" \
+            --verification-home "$verification_home"
+      - name: Upload the OpenPGP checksum signature
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-openpgp-signature
+          path: ${{ runner.temp }}/dist/SHA256SUMS.asc
+          if-no-files-found: error
+          # Only the scratch artifact of this run; allows a failed publish-job retry.
+          overwrite: true
       # The token is minted only now, and only the publish step below sees it.
       - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
         if: steps.registry.outputs.published == 'false'
@@ -221,6 +264,10 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-provenance
+          path: ${{ runner.temp }}/dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-openpgp-signature
           path: ${{ runner.temp }}/dist
       # Before any upload: the exact asset set, every attestation (signer
       # build-binaries.yml at the tag commit), the bundle equal to GitHub's stored
@@ -265,7 +312,8 @@ jobs:
       # Every asset's digest, SHA256SUMS, provenance (signer build-binaries.yml,
       # source and signer = the tag commit), the bundle against GitHub's store and
       # the SBOM bindings; then the downloaded binary's worker runs natively. The
-      # window checks stay in verify-release-download.yml (post-publication).
+      # OpenPGP runs only on Linux; Windows retains checksums and attestations.
+      # Window checks stay in verify-release-download.yml (post-publication).
       - name: Download, verify every asset and attestation, run the downloaded binary
         shell: bash
         env:

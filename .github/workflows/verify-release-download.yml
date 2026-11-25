@@ -18,6 +18,9 @@ on:
       - .github/workflows/verify-release-download.yml
       - scripts/release_assets.py
       - scripts/provenance_bundle.py
+      - scripts/release_signing.py
+      - scripts/test_release_signing.py
+      - .github/release-signing-key.asc
       - scripts/test_release_assets.py
 permissions:
   contents: read
@@ -50,7 +53,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
-          sparse-checkout: scripts
+          sparse-checkout: |
+            scripts
+            .github
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -94,10 +99,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
-          sparse-checkout: scripts
+          sparse-checkout: |
+            scripts
+            .github
           persist-credentials: false
       # The same check trusted-publishing.yml's `verify` job runs on Windows:
-      # every asset and attestation, then the downloaded worker.
+      # every checksum and attestation, then the downloaded worker.
+      # OpenPGP verification runs in the Linux assets job, not on Windows.
       - name: Full asset verification on Windows; run the downloaded worker
         shell: bash
         env:

@@ -26,7 +26,8 @@ verify-release-download.yml; tested by scripts/test_release_assets.py.
 Asset layouts (`layout()`): 0.4.3 and 0.5.0 have four archives signed by
 release-binaries.yml; 0.5.1 adds the SBOM and the build-binaries.yml signer
 (SLSA Build L3); 0.5.2 adds the provenance bundle; releases after 0.5.2 also
-carry the .crate, listed in the one SHA256SUMS.
+carry the .crate, listed in the one SHA256SUMS. Releases after 0.5.4 also
+carry its OpenPGP signature SHA256SUMS.asc, outside the Sigstore subjects.
 """
 from __future__ import annotations
 
@@ -46,6 +47,7 @@ import urllib.request
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import release_signing  # noqa: E402
 import provenance_bundle  # noqa: E402  (same directory)
 
 NAME = 'rust-mirror-gui'
@@ -89,11 +91,12 @@ def layout(version, build=False):
     sbom = f'{NAME}-{version}.cdx.json' if current or v >= (0, 5, 1) else None
     bundle = f'{NAME}-{version}.intoto.jsonl' if current or v >= (0, 5, 2) else None
     crate = f'{NAME}-{version}.crate' if current else None
+    openpgp = 'SHA256SUMS.asc' if build or v > (0, 5, 4) else None
     summed = sorted(archives + [n for n in (sbom, crate) if n])
     signed = summed + ['SHA256SUMS']
     return dict(
-        version=version, archives=archives, sbom=sbom, bundle=bundle, crate=crate,
-        summed=summed, signed=signed, assets=sorted(signed + ([bundle] if bundle else [])),
+        version=version, archives=archives, sbom=sbom, bundle=bundle, crate=crate, openpgp=openpgp,
+        summed=summed, signed=signed, assets=sorted(signed + ([bundle] if bundle else []) + ([openpgp] if openpgp else [])),
         # 0.4.3 and 0.5.0 keep the identity they were published with.
         signer='build-binaries.yml' if sbom else 'release-binaries.yml', strict=sbom is not None,
         sbom_subjects=sorted(archives + ([crate] if crate else [])) if sbom else [],
@@ -315,6 +318,17 @@ def git(root, *args):
     return subprocess.check_output(['git', *args], cwd=root, text=True).strip()
 
 
+def verify_openpgp(folder, lay):
+    if lay['openpgp']:
+        if sys.platform == 'win32':
+            print('OpenPGP verification runs on the Linux verify leg; Windows checks hashes and attestations.', flush=True)
+            return
+        release_signing.verify(folder)
+        # All six names and hashes must also equal the exact expected manifest;
+        # callers check that independently before running any downloaded worker.
+        subprocess.run(['sha256sum', '--check', 'SHA256SUMS'], cwd=folder, check=True)
+
+
 def release_command(args):
     tag, commit, folder = args.tag, args.commit, args.assets
     require(re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag) is not None, 'not a release tag')
@@ -330,6 +344,7 @@ def release_command(args):
     for n in lay['signed']:
         (stash / n).write_bytes((folder / n).read_bytes())
     check_build(stash, version)
+    verify_openpgp(folder, lay)
     verify_attestations(folder, lay, commit, folder / lay['bundle'])
     notes = subprocess.check_output(['git', 'show', f'{commit}:docs/releases/{tag}.md'], cwd=args.root).decode('utf-8')
     publish_release(tag, notes, folder)
@@ -371,6 +386,7 @@ def verify_command(args, call=None):
             require(asset['digest'] == 'sha256:' + actual, f'{name}: GitHub asset digest mismatch')
         print(f'{actual}  {name}', flush=True)
     require((out / 'SHA256SUMS').read_bytes().decode() == sums_text(out, lay['summed']), 'SHA256SUMS differs from the files')
+    verify_openpgp(out, lay)
     commit = call(f'https://api.github.com/repos/{REPO}/commits/{tag}')['sha'] if lay['strict'] else None
     verify_attestations(out, lay, commit, out / lay['bundle'] if lay['bundle'] else None)
     if args.run_target:

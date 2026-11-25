@@ -107,6 +107,28 @@ the folder. No separate rust-mirror installation is needed. On Windows, no
 extra runtime is needed either: the C runtime is linked into the executable,
 so the Visual C++ Redistributable isn't required.
 
+**OpenPGP verification, releases after 0.5.4:** download `SHA256SUMS`,
+`SHA256SUMS.asc` and all six files listed in the manifest. Obtain the
+[committed public key](https://raw.githubusercontent.com/rustcommons/rust-mirror-gui/main/.github/release-signing-key.asc) as
+`release-signing-key.asc`. Its primary fingerprint must be exactly
+**`B281C3010A76A11737B4D066C7396F6EA7647CC6`**; do not trust a key by its
+name or email address alone.
+
+```sh
+gpg --import release-signing-key.asc
+gpg --fingerprint B281C3010A76A11737B4D066C7396F6EA7647CC6
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --check SHA256SUMS
+```
+
+Require a successful signature and the pinned **primary** fingerprint in
+GnuPG's verification output, then check all listed files. For automatic
+fingerprint enforcement in a temporary public-only keyring, a source
+checkout provides `python3 scripts/release_signing.py verify DOWNLOAD_DIR`;
+follow it with `sha256sum --check SHA256SUMS` inside that download directory.
+Releases through 0.5.4 have no OpenPGP signature and keep their existing
+verification instructions below.
+
 **Check the download** against `SHA256SUMS` on the same release page:
 
 ```powershell
@@ -119,8 +141,8 @@ sha256sum -c --ignore-missing SHA256SUMS         # Linux
 shasum -a 256 -c --ignore-missing SHA256SUMS     # macOS
 ```
 
-Every file also has a signed build-provenance attestation, which proves it
-was built by this repository's release workflow from the tagged source. From
+The payloads and `SHA256SUMS` also have signed build-provenance attestations,
+which prove they were built by this repository's release workflow from the tagged source. From
 0.5.1 on, the release build signs it (SLSA Build Level 3), and each archive
 also has an attestation for its SBOM. With the
 [GitHub CLI](https://cli.github.com/):
