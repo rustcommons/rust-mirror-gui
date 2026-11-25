@@ -84,10 +84,20 @@ There is no top-level `attest` job.
      --no-verify` and requires the bytes to be identical (`cmp`) to the
      attested `.crate`. The core already built the packaged source, so no
      crate build code runs in this job;
+   - signs `SHA256SUMS` with the release-signing subkey and verifies
+     `SHA256SUMS.asc` immediately in a second temporary home holding only
+     the committed public key, with the pinned primary fingerprint. Both
+     homes and agents are cleaned up. This uses preinstalled GnuPG, compiles
+     no crate code, and failure stops the job before token creation;
+   - uploads the signature as a separate artifact. Signing/upload also run
+     when crates.io already has the exact crate, so a failed publish-job
+     retry can finish the release. Only this run's scratch signature
+     artifact may be overwritten by that retry;
    - only then mints the short-lived token, which only the single step
      `cargo publish --locked --no-verify` receives.
 8. **GitHub release** (automatic). Before any upload it checks:
-   - the exact asset set;
+   - the exact version-specific asset set;
+   - the OpenPGP signature of `SHA256SUMS`, with the pinned primary fingerprint;
    - every attestation (signer `build-binaries.yml`, source and signer
      digest = the tag's commit, GitHub-hosted runners only), online and with
      the bundle;
@@ -97,14 +107,16 @@ There is no top-level `attest` job.
 
    It then creates `vX.Y.Z` as a **draft** from the committed notes (title =
    the notes' first heading) and checks the draft's tag, title, body and
-   state. It uploads all eight assets, checking each one's name, size and
-   digest, and re-reads the draft. Only then does it publish the release and
-   check it again. The release is marked **latest only if its version is
+   state. For releases after 0.5.4 it uploads all nine assets, checking each
+   one's name, size and digest, and re-reads the draft. Only then does it
+   publish the release and check it again. The release is marked **latest only if its version is
    above every published release**, so a patch to an older line doesn't
    become latest.
 9. **Verify publication** (Windows and Linux runners). Each:
    - downloads every asset and checks the digests, `SHA256SUMS`, every
      attestation, the bundle against GitHub's store and the SBOM bindings;
+   - for releases after 0.5.4, verifies `SHA256SUMS.asc` in a temporary
+     public-only GnuPG home and runs `sha256sum --check` for every entry;
    - runs the downloaded worker.
 
    The Linux leg also checks:
@@ -132,8 +144,8 @@ There is no top-level `attest` job.
   - finds the draft through the releases list (the tags API returns 404
     for drafts);
   - refuses unless the draft's tag, title, body and state are exactly ours
-    and every existing asset is one of the eight with identical bytes;
-  - uploads only the missing assets, checks all eight, then publishes.
+    and every existing asset is in that version's exact layout with identical bytes;
+  - uploads only the missing assets, checks the complete layout, then publishes.
 
   A published release is never modified: if it is complete, the re-run
   changes nothing; if it is incomplete, the re-run is refused for a
@@ -147,7 +159,7 @@ There is no top-level `attest` job.
 - **Never** delete or replace an asset of a published release. If a
   published file is wrong, ship a new version.
 
-### Asset layout from the next release (after 0.5.2): eight files
+### Asset layouts: eight files in 0.5.3–0.5.4; nine afterwards
 
 | Asset | What it is |
 | --- | --- |
@@ -155,7 +167,8 @@ There is no top-level `attest` job.
 | `rust-mirror-gui-X.Y.Z-x86_64-pc-windows-msvc.zip`, `-x86_64-unknown-linux-gnu.tar.gz`, `-aarch64-apple-darwin.tar.gz`, `-x86_64-apple-darwin.tar.gz` | the four downloads (see below) |
 | `rust-mirror-gui-X.Y.Z.cdx.json` | the CycloneDX SBOM: `cargo cyclonedx --target all --spec-version 1.6` (cargo-cyclonedx 0.5.10, installed with `--locked`), so it lists every target's dependencies |
 | `SHA256SUMS` | `sha256sum` format, sorted by file name: the `.crate`, the four archives and the SBOM (six entries) |
-| `rust-mirror-gui-X.Y.Z.intoto.jsonl` | the signed provenance: one Sigstore bundle per line, whose subjects are exactly the other seven files. **Not in `SHA256SUMS`:** it is signed itself, and `SHA256SUMS` is one of its subjects. Scorecard's Signed-Releases check recognizes it, and users verify offline with it |
+| `SHA256SUMS.asc` (after 0.5.4 only) | OpenPGP signature of `SHA256SUMS`; outside the checksum manifest and Sigstore subjects |
+| `rust-mirror-gui-X.Y.Z.intoto.jsonl` | the signed provenance: one Sigstore bundle per line, whose subjects are exactly the six payloads plus `SHA256SUMS`. **Not in `SHA256SUMS`:** it is signed itself, and `SHA256SUMS` is one of its subjects. Scorecard's Signed-Releases check recognizes it, and users verify offline with it |
 
 **Earlier releases keep their layouts,** and the verifiers check each one
 exactly as before (`scripts/release_assets.py`, `layout()`; tested in
@@ -280,10 +293,53 @@ full `build` with publish=false:
 - all four targets with every qualification gate;
 - the crate (package, audit, install);
 - the SBOM and `SHA256SUMS`;
-- an unsigned placeholder bundle staged on a copy, to prove the exact upload
-  set.
+- an unsigned placeholder Sigstore bundle staged on a copy;
+- OpenPGP signing/verification tests using ephemeral keys, never the release
+  key. The real `SHA256SUMS.asc` is produced only after owner approval in
+  the `crates-io` publish job.
 
 So a release PR proves its binaries and its crate before the merge. A manual
 run (Actions → Trusted publishing → Run workflow) does the same on a branch.
 Changes to the release-verification code also run `verify-release-download.yml`
 against the latest release.
+
+## OpenPGP release signing (owner-approved 2026-11-25)
+
+The [standard specification, PR #24](https://github.com/rustcommons/.github/pull/24)
+authorizes `SHA256SUMS.asc`. Releases after 0.5.4 have nine assets: the crate,
+four archives, SBOM, `SHA256SUMS`, its OpenPGP signature and the Sigstore bundle.
+The `.asc` is not listed in `SHA256SUMS` or the Sigstore subjects: it signs the
+manifest after the reusable builder has finished. Releases through 0.5.4
+retain their original exact layouts and do not require an `.asc`.
+
+The public key is committed at [`.github/release-signing-key.asc`](../.github/release-signing-key.asc).
+The pinned primary fingerprint is **`B281C3010A76A11737B4D066C7396F6EA7647CC6`**.
+The signing subkey is `248DFD639B75D1EFF2A87289D7C7DE7BBCCF35EC`; signing
+selects that exact subkey with `!`. The owner holds the offline primary and
+revocation certificate. The approved `crates-io` environment holds only
+`RELEASE_SIGNING_KEY` (the signing subkey) and `RELEASE_SIGNING_PASSPHRASE`.
+Both are step-scoped; the passphrase is passed on stdin, never argv, a file,
+logs or a later step's environment.
+
+`scripts/release_signing.py` verifies GnuPG's `VALIDSIG` primary fingerprint
+against the constant, using only the committed public key. Its production
+CLI accepts no test mode, alternative key or fingerprint override. Tests
+import the committed key and check its primary fingerprint, and separately
+generate ephemeral certifying/signing keys to exercise the crypto path.
+These tests run in the release gate's PR dry run and the release-docs check;
+the public-download Windows job also exercises the portable verifier tests.
+
+For manual verification, download the manifest, its signature and every
+listed payload. Import the committed public key into a fresh keyring, check
+the pinned primary fingerprint and run:
+
+```sh
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum --check SHA256SUMS
+```
+
+Require the pinned primary fingerprint in GnuPG's output. To enforce it
+automatically with an isolated temporary keyring, run
+`python3 scripts/release_signing.py verify DOWNLOAD_DIR`, then the checksum
+command inside that directory. No compiled binary should run until these
+checks and the existing attestation checks pass.

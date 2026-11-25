@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **Repository:** add an OpenPGP `SHA256SUMS.asc` asset to releases after
+  0.5.4. The owner-approved publish job signs and verifies the checksum
+  manifest before creating a crates.io token, using the pinned Rust Commons
+  release key in temporary GnuPG homes. Public verification checks that
+  signature and every listed payload; earlier releases keep their layouts.
+  PR tests exercise signing with throwaway keys only.
+
 - **Repository:** record the 0.5.4 publication, main CI before tagging,
   the complete Trusted Publishing run and public asset verification.
   Point the download check at v0.5.4.

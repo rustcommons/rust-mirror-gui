@@ -83,6 +83,18 @@ fetch/sync with progress and resume, multi-version assembly, retention preview
   - one `SHA256SUMS`;
   - one `rust-mirror-gui-<version>.intoto.jsonl`.
 
+  On 2026-11-25 the owner authorized `SHA256SUMS.asc` for releases after
+  0.5.4 (nine assets). It is an OpenPGP detached signature of `SHA256SUMS`,
+  outside the checksum manifest and Sigstore subject list. Pin primary
+  fingerprint `B281C3010A76A11737B4D066C7396F6EA7647CC6` and commit the
+  public key at `.github/release-signing-key.asc`. Only the approved
+  `crates-io` publish job may read `RELEASE_SIGNING_KEY` and
+  `RELEASE_SIGNING_PASSPHRASE`, scoped to its signing step. Sign and verify
+  with a second public-only home before token creation; clean up both homes
+  and agents. Produce the signature even when the crate is already published.
+  Earlier releases retain their original layouts. PR tests use throwaway keys
+  and cannot override the production fingerprint pin.
+
   Attach no other distribution artifacts without further authorization.
   `release-binaries.yml` is retired; releases up to 0.5.2 keep their
   layouts.
